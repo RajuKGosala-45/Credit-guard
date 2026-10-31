@@ -1,0 +1,32 @@
+{
+  "name": "credit-guard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Credit limit monitoring and exposure analysis demo for Bluspring Enterprises",
+  "scripts": {
+    "dev": "cds watch --port 4005",
+    "start": "cds-serve"
+  },
+  "cds": {
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": {
+          "database": ":memory:"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@cap-js/sqlite": "^1",
+    "@sap/cds": "^8",
+    "dotenv": "^16",
+    "express": "^4",
+    "mammoth": "^1.9.0",
+    "multer": "^2.0.2",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@sap/cds-dk": "^8"
+  }
+}

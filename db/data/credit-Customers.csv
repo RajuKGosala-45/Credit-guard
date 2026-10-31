@@ -1,0 +1,13 @@
+ID,name,country,companyCode,creditLimit,riskClass,lastReviewDate
+C001,Aarav Components,India,BS01,1000000,A,2026-03-15
+C002,Desert Star Trading,UAE,BS02,800000,B,2026-01-20
+C003,Merlion Systems,Singapore,BS03,1000000,A,2026-05-01
+C004,Indus Retail Group,India,BS04,500000,B,2025-11-10
+C005,Gulf Horizon LLC,UAE,BS05,1000000,C,2026-04-04
+C006,Monsoon Logistics,India,BS01,500000,C,2026-06-11
+C007,Lotus Industrial,India,BS02,600000,A,2026-02-14
+C008,Pearl Coast Foods,UAE,BS03,700000,B,2026-01-02
+C009,Orchid Digital,Singapore,BS04,800000,A,2026-05-22
+C010,Saffron Textiles,India,BS05,900000,C,2025-12-01
+C011,Lion City Supplies,Singapore,BS01,400000,B,2026-02-08
+C012,Bluewater Services,UAE,BS02,1200000,A,2026-06-30
