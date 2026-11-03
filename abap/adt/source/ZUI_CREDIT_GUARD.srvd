@@ -1,0 +1,5 @@
+@EndUserText.label: 'Credit Guard read-only custom demo API'
+define service ZUI_CREDIT_GUARD {
+  expose ZC_CG_CUSTOMER as Customers;
+  expose ZC_CG_OPEN_ITEM as OpenItems;
+}

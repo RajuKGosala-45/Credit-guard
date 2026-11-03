@@ -22,8 +22,19 @@ export const getCustomer = id => request(`/api/customers/${encodeURIComponent(id
 export const getLimitRequests = status => request(`/api/limit-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`);
 export const createLimitRequest = payload => request('/api/limit-requests', { method: 'POST', body: JSON.stringify(payload) });
 export const decideLimitRequest = (id, payload) => request(`/api/limit-requests/${encodeURIComponent(id)}/decision`, { method: 'POST', body: JSON.stringify(payload) });
-export const sendChat = (message, documentContext) => request('/api/chat', {
-  method: 'POST', body: JSON.stringify({ message, documentContext })
+export const sendChat = (message, documentContext, conversationId) => request('/api/chat', {
+  method: 'POST', body: JSON.stringify({ message, documentContext, conversationId })
+});
+export const getAgentHistory = () => request('/api/agent/history');
+export const getAgentConversation = id => request(`/api/agent/conversations/${encodeURIComponent(id)}`);
+export const clearAgentConversation = id => request(
+  id ? `/api/agent/conversations/${encodeURIComponent(id)}` : '/api/agent/history',
+  { method: 'DELETE' }
+);
+export const submitPreparedProposal = proposal => createLimitRequest({
+  customerId: proposal.customerId,
+  requestedLimit: proposal.requestedLimit,
+  reason: proposal.reason
 });
 export function analyzeDocument(file) {
   const form = new FormData();

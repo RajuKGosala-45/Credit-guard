@@ -20,13 +20,18 @@ export function renderApprovals(requests) {
   host.innerHTML = `${pendingHtml}${historyHtml}`;
 }
 
-export async function handleApprovalClick(event, decide, role) {
+export async function handleApprovalClick(event, decide) {
   const button = event.target.closest('[data-decision]');
   if (!button) return null;
+  const reason = window.prompt('Enter the business reason for this approval decision (1-500 characters).');
+  if (reason === null) return null;
+  if (!reason.trim() || reason.trim().length > 500) {
+    throw new Error('Enter a decision reason of 1-500 characters.');
+  }
   button.disabled = true;
   try {
     return await decide(button.dataset.requestId, {
-      decision: button.dataset.decision, role, decidedBy: 'Demo approver'
+      decision: button.dataset.decision, reason: reason.trim()
     });
   } finally {
     button.disabled = false;

@@ -1,12 +1,21 @@
-import { escapeHTML, formatINR, formatPercent, statusClass } from '../utils.js';
+import { escapeHTML, formatMoney, formatPercent } from '../utils.js';
 
 export function renderKpis(kpis) {
+  const multiCurrency = Array.isArray(kpis.currencyTotals);
+  const money = value => multiCurrency ? 'Multiple currencies' : formatMoney(value, kpis.currency);
   const values = [
-    ['Total exposure', formatINR(kpis.totalExposure), `${kpis.customerCount} customers`],
-    ['Total credit limit', formatINR(kpis.totalLimit), 'Across five company codes'],
-    ['Overall utilisation', formatPercent(kpis.overallUtilisation), 'Exposure ÷ total limit'],
-    ['Customers breached', kpis.customersBreached, `${kpis.warningCustomers} approaching limit`]
+    ['Total exposure', money(kpis.totalExposure), `${kpis.customerCount} customers`],
+    ['Total credit limit', money(kpis.totalLimit), multiCurrency ? 'See the currency-specific totals' : 'Across five company codes'],
+    ['Overall utilisation', multiCurrency ? 'Multiple currencies' : formatPercent(kpis.overallUtilisation), 'Exposure ÷ total limit'],
+    ['Customers breached', kpis.customersBreached, `${kpis.warningCustomers} approaching limit · ${kpis.manualReviewCustomers || 0} manual review`]
   ];
+  if (multiCurrency) {
+    values.push(...kpis.currencyTotals.map(row => [
+      `${row.currency} totals`,
+      formatMoney(row.totalExposure, row.currency),
+      `${formatMoney(row.totalLimit, row.currency)} limit · ${formatPercent(row.overallUtilisation)} utilisation`
+    ]));
+  }
   document.querySelector('#kpis').innerHTML = values.map(([label, value, note]) =>
     `<article class="kpi-card"><p class="kpi-label">${escapeHTML(label)}</p><p class="kpi-value">${escapeHTML(value)}</p><p class="kpi-note">${escapeHTML(note)}</p></article>`
   ).join('');
@@ -20,13 +29,13 @@ export function renderExposure(dashboard, group) {
     return;
   }
   host.innerHTML = rows.map(row => {
-    const percent = Number.isFinite(row.utilisation) ? row.utilisation * 100 : 100;
+    const percent = Number.isFinite(row.utilisation) ? row.utilisation * 100 : row.exposure > 0 ? 100 : 0;
     const width = Math.min(100, Math.max(0, percent));
     const tone = percent > 100 ? 'breach' : percent >= 80 ? 'warning' : '';
-    const noLimit = row.creditLimit === 0 && row.exposure > 0;
+    const noLimit = row.creditLimit === 0;
     return `<div class="exposure-row"><span class="exposure-label" title="${escapeHTML(row.label)}">${escapeHTML(row.label)}</span>
       <div class="bar-track" role="img" aria-label="${escapeHTML(formatPercent(row.utilisation))} utilised"><div class="bar-fill ${tone}" style="width:${width}%"></div></div>
-      <span class="exposure-value">${escapeHTML(formatINR(row.exposure))} · ${noLimit ? 'No limit' : escapeHTML(formatPercent(row.utilisation))}</span></div>`;
+      <span class="exposure-value">${escapeHTML(formatMoney(row.exposure, row.currency))} · ${noLimit ? 'Manual review · no limit' : escapeHTML(formatPercent(row.utilisation))}</span></div>`;
   }).join('');
 }
 

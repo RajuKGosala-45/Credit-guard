@@ -5,21 +5,112 @@
   "description": "Credit limit monitoring and exposure analysis demo for Bluspring Enterprises",
   "scripts": {
     "dev": "cds watch --port 4005",
-    "start": "cds-serve"
+    "start": "cds-serve",
+    "start:cf": "cds-serve",
+    "start:persistent": "cds-serve --profile persistent",
+    "test": "node --test",
+    "build:cf": "cds build --production --opts contentHdbtabledata=false && node -e \"const fs=require('fs');fs.mkdirSync('gen/srv/app',{recursive:true});fs.cpSync('app/credit','gen/srv/app/credit',{recursive:true})\""
   },
   "cds": {
     "requires": {
       "db": {
-        "kind": "sqlite",
-        "credentials": {
-          "database": ":memory:"
+        "[development]": {
+          "kind": "sqlite",
+          "credentials": {
+            "database": ":memory:"
+          }
+        },
+        "[persistent]": {
+          "kind": "sqlite",
+          "credentials": {
+            "url": "credit-guard.sqlite",
+            "database": "credit-guard.sqlite"
+          }
+        },
+        "[production]": {
+          "kind": "hana"
+        }
+      },
+      "auth": {
+        "[development]": {
+          "kind": "mocked",
+          "login_required": true,
+          "users": {
+            "reader": {
+              "roles": [
+                "CreditReader"
+              ]
+            },
+            "requester": {
+              "roles": [
+                "CreditReader",
+                "CreditRequester"
+              ]
+            },
+            "controller": {
+              "roles": [
+                "CreditReader",
+                "CreditRequester",
+                "CreditController"
+              ]
+            },
+            "finance": {
+              "roles": [
+                "CreditReader",
+                "CreditRequester",
+                "FinanceHead"
+              ]
+            },
+            "analyst": {
+              "roles": [
+                "CreditReader",
+                "CreditRequester",
+                "CreditAnalyst"
+              ]
+            },
+            "manager": {
+              "roles": [
+                "CreditReader",
+                "CreditRequester",
+                "CreditController",
+                "CreditManager"
+              ]
+            },
+            "approver": {
+              "roles": [
+                "CreditReader",
+                "CreditRequester",
+                "FinanceHead",
+                "CreditApprover"
+              ]
+            },
+            "administrator": {
+              "roles": [
+                "CreditReader",
+                "CreditRequester",
+                "CreditController",
+                "FinanceHead",
+                "CreditAdmin"
+              ]
+            }
+          }
+        },
+        "[production]": {
+          "kind": "xsuaa",
+          "vcap": {
+            "label": "xsuaa"
+          }
         }
       }
     }
   },
   "dependencies": {
+    "@cap-js/hana": "^1",
     "@cap-js/sqlite": "^1",
+    "@sap-cloud-sdk/connectivity": "~4.7.0",
+    "@sap-cloud-sdk/http-client": "~4.7.0",
     "@sap/cds": "^8",
+    "@sap/xssec": "^4",
     "dotenv": "^16",
     "express": "^4",
     "mammoth": "^1.9.0",
@@ -28,5 +119,8 @@
   },
   "devDependencies": {
     "@sap/cds-dk": "^8"
+  },
+  "overrides": {
+    "@sap-cloud-sdk/resilience": "4.7.0"
   }
 }

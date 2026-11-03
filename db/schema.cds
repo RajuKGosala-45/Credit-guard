@@ -34,3 +34,54 @@ entity LimitRequests {
       createdAt      : Timestamp;
       decidedAt      : Timestamp;
 }
+
+entity ApprovalHistory {
+  key ID             : UUID;
+      request_ID     : String(12) not null;
+      requester_ID   : String(100) not null;
+      approver_ID    : String(100) not null;
+      previousStatus : String(10) not null;
+      newStatus      : String(10) not null;
+      decisionReason : String(500) not null;
+      timestamp      : Timestamp not null;
+}
+
+entity AgentConversations {
+  key ID        : UUID;
+      owner_ID  : String(100) not null;
+      createdAt : Timestamp not null;
+      updatedAt : Timestamp not null;
+}
+
+entity AgentMessages {
+  key ID              : UUID;
+      conversation_ID  : UUID not null;
+      owner_ID         : String(100) not null;
+      role             : String(10) not null;
+      content          : LargeString not null;
+      createdAt        : Timestamp not null;
+}
+
+entity AgentExecutions {
+  key ID            : UUID;
+      user_ID        : String(100) not null;
+      conversation_ID: UUID;
+      status         : String(20) not null;
+      stepCount      : Integer not null;
+      startedAt      : Timestamp not null;
+      completedAt    : Timestamp;
+      errorCategory  : String(40);
+      providerFallback: Boolean not null default false;
+      providerErrorCategory: String(40);
+}
+
+entity AgentExecutionSteps {
+  key ID           : UUID;
+      execution_ID  : UUID not null;
+      sequence      : Integer not null;
+      toolName      : String(80) not null;
+      status        : String(20) not null;
+      summary       : String(500);
+      startedAt     : Timestamp not null;
+      completedAt   : Timestamp;
+}

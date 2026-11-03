@@ -16,7 +16,7 @@
     <a class="brand" href="./index.html" aria-label="Credit Guard home">
       <span class="brand-mark">CG</span><span><strong>Credit Guard</strong><small>BLUSPRING ENTERPRISES</small></span>
     </a>
-    <div class="header-meta"><span class="live-dot"></span> INR · Live exposure</div>
+    <div class="header-meta">INR · Synthetic demo data</div>
   </header>
   <main class="page-shell">
     <section class="page-intro">
@@ -61,10 +61,8 @@
     </section>
     <section id="approvals-panel" class="tab-panel">
       <section class="card">
-        <div class="card-heading"><div><p class="eyebrow">HUMAN-IN-THE-LOOP</p><h2>Limit approvals</h2></div>
-          <label class="role-select">Current approver role<select id="approver-role"><option>Credit Controller</option><option>Finance Head</option></select></label>
-        </div>
-        <p class="muted">Finance Head may decide requests routed to either role. Credit Controller can decide controller-routed requests only.</p>
+        <div class="card-heading"><div><p class="eyebrow">HUMAN-IN-THE-LOOP</p><h2>Limit approvals</h2></div></div>
+        <p class="muted">The authenticated server identity determines approver permissions. Decision reasons are recorded in the audit history.</p>
         <div id="approvals-list" class="approval-list"></div>
       </section>
     </section>
@@ -79,8 +77,18 @@
           <p class="privacy-note">With an Anthropic API key configured, extracted text is sent to Anthropic for analysis. Without a key, analysis runs offline. Scanned PDFs require OCR first.</p>
         </form>
         <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+        <section id="agent-activity" class="agent-activity" aria-live="polite" hidden></section>
         <form id="chat-form" class="chat-form"><label class="sr-only" for="chat-input">Ask the assistant</label><input id="chat-input" required maxlength="1000" placeholder="Ask about exposure, a customer, or pending requests"><button class="button primary" type="submit">Send</button></form>
         <p id="chat-error" class="form-message error" role="alert"></p>
+        <section class="agent-history">
+          <div class="card-heading"><h3>Agent execution history</h3><div class="document-actions">
+            <button id="refresh-agent-history" class="button secondary" type="button">Refresh</button>
+            <button id="clear-agent-history" class="button secondary" type="button">Clear my agent history</button>
+          </div></div>
+          <p id="agent-memory-status" class="muted" role="status"></p>
+          <ul id="agent-conversations-list" aria-label="My conversations"></ul>
+          <ul id="agent-history-list"></ul>
+        </section>
       </section>
     </section>
     <div id="global-error" class="notice error" role="alert" hidden></div>

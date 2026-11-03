@@ -1,0 +1,42 @@
+{
+  "xsappname": "credit-guard",
+  "tenant-mode": "dedicated",
+  "description": "Credit Guard role and scope definitions",
+  "scopes": [
+    { "name": "$XSAPPNAME.CreditReader", "description": "Read credit portfolio and request data" },
+    { "name": "$XSAPPNAME.CreditRequester", "description": "Prepare and submit credit-limit requests" },
+    { "name": "$XSAPPNAME.CreditController", "description": "Decide controller-routed credit requests" },
+    { "name": "$XSAPPNAME.FinanceHead", "description": "Decide finance-routed credit requests" },
+    { "name": "$XSAPPNAME.CreditAnalyst", "description": "Analyze portfolio and prepare credit requests" },
+    { "name": "$XSAPPNAME.CreditManager", "description": "Manage credit requests and controller approvals" },
+    { "name": "$XSAPPNAME.CreditApprover", "description": "Approve or reject routed credit requests" },
+    { "name": "$XSAPPNAME.CreditAdmin", "description": "Administrative Credit Guard access" }
+  ],
+  "role-templates": [
+    {
+      "name": "ReadOnlyBusinessUser",
+      "description": "Read-only access to the credit portfolio",
+      "scope-references": ["$XSAPPNAME.CreditReader"]
+    },
+    {
+      "name": "CreditAnalyst",
+      "description": "Analyze credit data and submit limit requests",
+      "scope-references": ["$XSAPPNAME.CreditReader", "$XSAPPNAME.CreditRequester", "$XSAPPNAME.CreditAnalyst"]
+    },
+    {
+      "name": "CreditManager",
+      "description": "Manage credit requests and controller-level decisions",
+      "scope-references": ["$XSAPPNAME.CreditReader", "$XSAPPNAME.CreditRequester", "$XSAPPNAME.CreditController", "$XSAPPNAME.CreditManager"]
+    },
+    {
+      "name": "CreditApprover",
+      "description": "Decide credit requests at finance approval level",
+      "scope-references": ["$XSAPPNAME.CreditReader", "$XSAPPNAME.CreditRequester", "$XSAPPNAME.FinanceHead", "$XSAPPNAME.CreditApprover"]
+    },
+    {
+      "name": "Administrator",
+      "description": "Full Credit Guard application role set",
+      "scope-references": ["$XSAPPNAME.CreditReader", "$XSAPPNAME.CreditRequester", "$XSAPPNAME.CreditController", "$XSAPPNAME.FinanceHead", "$XSAPPNAME.CreditAnalyst", "$XSAPPNAME.CreditManager", "$XSAPPNAME.CreditApprover", "$XSAPPNAME.CreditAdmin"]
+    }
+  ]
+}

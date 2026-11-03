@@ -52,7 +52,7 @@ document.querySelector('#customer-list').addEventListener('click', async event =
         state.selectedCustomer = customer;
         state.currentTab = 'chat';
         document.querySelector('.tabs [data-tab="chat"]').click();
-        await explainCustomer(customer, api.sendChat, state.chatMessages, state.documentContext);
+        await explainCustomer(customer, api.sendChat, state.chatMessages, state.documentContext, state);
       }
     } else if (action?.customer) {
       state.selectedCustomer = action.customer;
@@ -68,10 +68,9 @@ document.querySelector('#request-form').addEventListener('submit', async event =
   }
 });
 
-document.querySelector('#approver-role').addEventListener('change', event => { state.approverRole = event.target.value; });
 document.querySelector('#approvals-list').addEventListener('click', async event => {
   try {
-    const decided = await handleApprovalClick(event, api.decideLimitRequest, state.approverRole);
+    const decided = await handleApprovalClick(event, api.decideLimitRequest);
     if (decided) {
       errorHost.hidden = true;
       await Promise.all([loadPortfolio(), loadApprovals()]);
@@ -80,7 +79,76 @@ document.querySelector('#approvals-list').addEventListener('click', async event 
 });
 
 document.querySelector('#chat-form').addEventListener('submit', event =>
-  handleChatSubmit(event, api.sendChat, state.chatMessages, state.documentContext));
+  handleChatSubmit(event, api.sendChat, state.chatMessages, state.documentContext, state));
+document.querySelector('#agent-activity').addEventListener('click', async event => {
+  const button = event.target.closest('[data-submit-proposal]');
+  if (!button) return;
+  const proposal = state.preparedActions?.[Number(button.dataset.proposalIndex)];
+  if (!proposal) return;
+  button.disabled = true;
+  try {
+    const request = await api.submitPreparedProposal(proposal);
+    button.textContent = `Submitted for ${request.approverLevel} approval`;
+    const notice = document.createElement('p');
+    notice.className = 'form-message';
+    notice.textContent = 'A human approver must still decide this request.';
+    button.after(notice);
+    await loadApprovals();
+  } catch (error) {
+    button.disabled = false;
+    showError(error.message);
+  }
+});
+
+async function loadAgentHistory() {
+  const result = await api.getAgentHistory();
+  const host = document.querySelector('#agent-history-list');
+  const conversationsHost = document.querySelector('#agent-conversations-list');
+  host.replaceChildren();
+  conversationsHost.replaceChildren();
+  for (const conversation of result.conversations) {
+    const row = document.createElement('li');
+    const button = document.createElement('button');
+    button.className = 'text-button';
+    button.type = 'button';
+    button.dataset.conversationId = conversation.ID;
+    button.textContent = `${new Date(conversation.updatedAt).toLocaleString()} · ${conversation.preview || 'Conversation'}`;
+    row.append(button);
+    conversationsHost.append(row);
+  }
+  for (const execution of result.executions) {
+    const row = document.createElement('li');
+    row.textContent = `${new Date(execution.startedAt).toLocaleString()} · ${execution.status} · ${execution.stepCount} step(s)`;
+    host.append(row);
+  }
+  document.querySelector('#agent-memory-status').textContent = result.memoryEnabled
+    ? 'Private conversation memory is enabled for this development profile.'
+    : 'Conversation memory is disabled; execution summaries are retained.';
+}
+document.querySelector('#refresh-agent-history').addEventListener('click', () =>
+  loadAgentHistory().catch(error => showError(error.message)));
+document.querySelector('#agent-conversations-list').addEventListener('click', async event => {
+  const button = event.target.closest('[data-conversation-id]');
+  if (!button) return;
+  try {
+    const conversation = await api.getAgentConversation(button.dataset.conversationId);
+    state.conversationId = conversation.ID;
+    state.chatMessages = conversation.messages.map(message => ({ role: message.role, text: message.content }));
+    renderChat(state.chatMessages);
+  } catch (error) { showError(error.message); }
+});
+document.querySelector('#clear-agent-history').addEventListener('click', async () => {
+  try {
+    await api.clearAgentConversation();
+    state.conversationId = null;
+    state.chatMessages = [];
+    renderChat(state.chatMessages);
+    await loadAgentHistory();
+  } catch (error) { showError(error.message); }
+});
+document.querySelector('.tabs').addEventListener('click', event => {
+  if (event.target.closest('[data-tab="chat"]')) loadAgentHistory().catch(error => showError(error.message));
+});
 
 document.querySelector('#document-form').addEventListener('submit', event =>
   handleDocumentSubmit(event, api.analyzeDocument, state.chatMessages, context => {

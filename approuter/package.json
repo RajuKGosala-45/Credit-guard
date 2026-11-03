@@ -1,0 +1,14 @@
+{
+  "name": "credit-guard-approuter",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node node_modules/@sap/approuter/approuter.js"
+  },
+  "dependencies": {
+    "@sap/approuter": "^23.4.0"
+  },
+  "engines": {
+    "node": "^22.0.0 || ^24.0.0"
+  }
+}

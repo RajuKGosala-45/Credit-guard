@@ -3,6 +3,13 @@ const inr = new Intl.NumberFormat('en-IN', {
 });
 
 export const formatINR = value => Number.isFinite(Number(value)) ? inr.format(Number(value)) : 'No limit';
+export const formatMoney = (value, currency = 'INR') => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '—';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency', currency, maximumFractionDigits: 0
+  }).format(amount);
+};
 export const formatPercent = value => value !== null && value !== undefined && Number.isFinite(Number(value))
   ? `${(Number(value) * 100).toFixed(1)}%` : 'No limit';
 export const formatDate = value => {

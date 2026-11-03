@@ -2,12 +2,31 @@ require('dotenv').config();
 const cds = require('@sap/cds');
 const express = require('express');
 const path = require('path');
-const { randomUUID } = require('crypto');
-const { SELECT, INSERT, UPDATE } = cds.ql;
 const multer = require('multer');
-const { classifyCustomer, routeApprover, canDecide } = require('./rules');
+const { validateProductionBindings } = require('./deployment');
+const creditService = require('./creditService');
+const { validateActorId } = require('./limitRequests');
 const { chat } = require('./agent');
 const { extractDocument, MAX_EXTRACTED_CHARACTERS } = require('./documents');
+const {
+  MEMORY_ENABLED,
+  clearAgentHistory,
+  clearConversations,
+  getOrCreateConversation,
+  listConversations,
+  listExecutions,
+  loadConversationMessages,
+  readConversation,
+  recordExecution,
+  saveConversationTurn
+} = require('./agentStore');
+
+validateProductionBindings({
+  profiles: cds.env.profiles,
+  env: process.env,
+  dbKind: cds.env.requires.db?.kind,
+  authKind: cds.env.requires.auth?.kind
+});
 
 const number = value => Number(value || 0);
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -26,146 +45,119 @@ function parseDocumentUpload(req, res, next) {
   });
 }
 
-async function customerSummaries() {
-  const [customers, items] = await Promise.all([
-    cds.db.run(SELECT.from('credit.Customers')),
-    cds.db.run(SELECT.from('credit.OpenItems'))
-  ]);
-  return customers.map(customer =>
-    classifyCustomer(customer, items.filter(item => item.customer_ID === customer.ID)));
+function currentUser(req) {
+  return req?.user || cds.context?.user;
 }
 
-function aggregate(records, key) {
-  const grouped = new Map();
-  for (const customer of records) {
-    const label = customer[key];
-    const row = grouped.get(label) || { label, exposure: 0, creditLimit: 0, customers: 0 };
-    row.exposure += customer.exposure;
-    row.creditLimit += customer.creditLimit;
-    row.customers += 1;
-    grouped.set(label, row);
+function requireAuthenticatedUser(req, res, next) {
+  const user = currentUser(req);
+  if (!user || user._is_anonymous || user._is_privileged || !user.id) {
+    res.set('WWW-Authenticate', 'Bearer').status(401).json({ error: 'Authentication is required.' });
+    return;
   }
-  return [...grouped.values()].map(row => ({
-    ...row,
-    utilisation: row.creditLimit ? row.exposure / row.creditLimit : row.exposure ? Infinity : 0
-  })).sort((a, b) => b.exposure - a.exposure);
+  next();
+}
+
+function requireRole(role) {
+  return (req, res, next) => {
+    const user = currentUser(req);
+    if (!user?.is(role)) {
+      res.status(403).json({ error: `The ${role} permission is required.` });
+      return;
+    }
+    next();
+  };
 }
 
 cds.on('bootstrap', app => {
-  app.use('/credit', express.static(path.join(__dirname, '..', 'app', 'credit')));
+  app.get('/health/live', (_req, res) => res.status(200).json({ status: 'live' }));
+  app.get('/health/ready', (_req, res) => {
+    if (!cds.db || typeof cds.db.run !== 'function') {
+      return res.status(503).json({ status: 'not-ready' });
+    }
+    return res.status(200).json({ status: 'ready' });
+  });
+  app.use('/credit', cds.middlewares.before, express.static(path.join(__dirname, '..', 'app', 'credit')));
+  app.use('/api', cds.middlewares.before);
   app.use('/api', express.json());
+  app.use('/api', requireAuthenticatedUser);
 
-  app.get('/api/dashboard', async (_req, res) => {
+  app.get('/api/dashboard', requireRole('CreditReader'), async (_req, res) => {
     try {
-      const customers = await customerSummaries();
-      const totalExposure = customers.reduce((sum, item) => sum + item.exposure, 0);
-      const totalLimit = customers.reduce((sum, item) => sum + item.creditLimit, 0);
+      const customers = await creditService.getCustomerSummaries(cds.db, currentUser(_req));
       res.json({
-        kpis: {
-          totalExposure, totalLimit, overallUtilisation: totalLimit ? totalExposure / totalLimit : 0,
-          customersBreached: customers.filter(item => item.utilisation > 1).length,
-          warningCustomers: customers.filter(item => item.status === 'WARNING').length,
-          overdueRiskCustomers: customers.filter(item => item.flags.includes('OVERDUE_RISK')).length,
-          healthyCustomers: customers.filter(item => item.status === 'HEALTHY').length,
-          customerCount: customers.length
-        },
+        kpis: creditService.aggregatePortfolio(customers),
         exposure: {
-          country: aggregate(customers, 'country'),
-          companyCode: aggregate(customers, 'companyCode'),
-          customer: aggregate(customers, 'name')
+          country: creditService.aggregateExposure(customers, 'country'),
+          companyCode: creditService.aggregateExposure(customers, 'companyCode'),
+          customer: creditService.aggregateExposure(customers, 'name')
         }
       });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      res.status(error.statusCode || (error instanceof TypeError ? 422 : 500)).json({ error: error.message });
     }
   });
 
-  app.get('/api/customers', async (_req, res) => {
-    try { res.json(await customerSummaries()); }
-    catch (error) { res.status(500).json({ error: error.message }); }
+  app.get('/api/customers', requireRole('CreditReader'), async (_req, res) => {
+    try { res.json(await creditService.getCustomerSummaries(cds.db, currentUser(_req))); }
+    catch (error) { res.status(error.statusCode || (error instanceof TypeError ? 422 : 500)).json({ error: error.message }); }
   });
 
-  app.get('/api/customers/:id', async (req, res) => {
+  app.get('/api/customers/:id', requireRole('CreditReader'), async (req, res) => {
     try {
-      const customer = (await customerSummaries()).find(item => item.ID === req.params.id);
+      const customer = await creditService.getCustomerDetail(cds.db, currentUser(req), req.params.id);
       if (!customer) return res.status(404).json({ error: `Customer ${req.params.id} was not found.` });
-      const openItems = await cds.db.run(SELECT.from('credit.OpenItems').where({ customer_ID: customer.ID }));
-      return res.json({ ...customer, openItems });
+      return res.json(customer);
     } catch (error) {
-      return res.status(500).json({ error: error.message });
+      return res.status(error.statusCode || (error instanceof TypeError ? 422 : 500)).json({ error: error.message });
     }
   });
 
-  app.get('/api/limit-requests', async (req, res) => {
+  app.get('/api/limit-requests', requireRole('CreditReader'), async (req, res) => {
     try {
-      const query = SELECT.from('credit.LimitRequests').orderBy('createdAt desc');
-      if (req.query.status) query.where({ status: req.query.status });
-      const requests = await cds.db.run(query);
-      const customers = await cds.db.run(SELECT.from('credit.Customers'));
-      res.json(requests.map(request => ({
-        ...request,
-        customerName: customers.find(customer => customer.ID === request.customer_ID)?.name || request.customer_ID
-      })));
+      const requests = await creditService.listLimitRequests(cds.db, currentUser(req), req.query.status);
+      res.json(requests);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.post('/api/limit-requests', async (req, res) => {
+  app.post('/api/limit-requests', requireRole('CreditRequester'), async (req, res) => {
     try {
-      const { customerId, requestedLimit, reason, requestedBy = 'Demo user' } = req.body || {};
-      if (!customerId || !Number.isFinite(Number(requestedLimit)) || Number(requestedLimit) <= 0 || !String(reason || '').trim()) {
-        return res.status(400).json({ error: 'Provide a customer, a positive requested limit, and a reason.' });
-      }
-      const customer = (await cds.db.run(SELECT.from('credit.Customers').where({ ID: customerId })))[0];
-      if (!customer) return res.status(404).json({ error: `Customer ${customerId} was not found.` });
-      const currentLimit = number(customer.creditLimit);
-      const approverLevel = routeApprover(currentLimit, Number(requestedLimit));
-      const request = {
-        ID: randomUUID(), customer_ID: customerId, currentLimit,
-        requestedLimit: Number(requestedLimit), reason: String(reason).trim(),
-        requestedBy: String(requestedBy).trim().slice(0, 100) || 'Demo user',
-        status: 'Pending', approverLevel, createdAt: new Date().toISOString()
-      };
-      await cds.db.run(INSERT.into('credit.LimitRequests').entries(request));
+      const request = await creditService.createLimitRequest(cds.db, currentUser(req), req.body);
       return res.status(201).json(request);
     } catch (error) {
-      return res.status(500).json({ error: error.message });
+      return res.status(error.statusCode || (error instanceof TypeError ? 400 : 500)).json({ error: error.message });
     }
   });
 
   app.post('/api/limit-requests/:id/decision', async (req, res) => {
     try {
-      const { decision, role, decidedBy = 'Demo approver' } = req.body || {};
-      if (!['Approved', 'Rejected'].includes(decision) || !['Credit Controller', 'Finance Head'].includes(role)) {
-        return res.status(400).json({ error: 'Provide an Approved or Rejected decision and a valid approver role.' });
-      }
-      const request = (await cds.db.run(SELECT.from('credit.LimitRequests').where({ ID: req.params.id })))[0];
-      if (!request) return res.status(404).json({ error: 'Limit request was not found.' });
-      if (request.status !== 'Pending') return res.status(409).json({ error: 'This request has already been decided.' });
-      if (!canDecide(role, request.approverLevel)) {
-        return res.status(403).json({ error: `This request is routed to ${request.approverLevel}; the selected role cannot decide it.` });
-      }
-      const decidedAt = new Date().toISOString();
-      await cds.db.tx(async tx => {
-        if (decision === 'Approved') {
-          await tx.run(UPDATE('credit.Customers')
-            .set({ creditLimit: request.requestedLimit }).where({ ID: request.customer_ID }));
-        }
-        await tx.run(UPDATE('credit.LimitRequests')
-          .set({ status: decision, decidedBy: `${String(decidedBy).trim().slice(0, 80) || 'Demo approver'} (${role})`, decidedAt })
-          .where({ ID: request.ID, status: 'Pending' }));
-      });
-      return res.json({ ...request, status: decision, decidedBy: `${decidedBy} (${role})`, decidedAt });
+      const result = await creditService.decideLimitRequest(cds.db, currentUser(req), req.params.id, req.body);
+      return res.json(result);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/limit-requests/:id/history', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const history = await creditService.getApprovalHistory(cds.db, currentUser(req), req.params.id);
+      return res.json(history);
     } catch (error) {
       return res.status(500).json({ error: error.message });
     }
   });
 
-  app.post('/api/chat', async (req, res) => {
+  app.post('/api/chat', requireRole('CreditReader'), async (req, res) => {
+    let userId;
+    let conversationId;
+    let startedAt;
     try {
       const message = String(req.body?.message || '').trim();
-      if (!message) return res.status(400).json({ error: 'Enter a message to chat with the credit-control assistant.' });
+      if (!message || message.length > 1000) {
+        return res.status(400).json({ error: 'Enter a message of 1-1000 characters.' });
+      }
       const providedContext = req.body?.documentContext;
       if (providedContext && (
         typeof providedContext.text !== 'string'
@@ -180,13 +172,87 @@ cds.on('bootstrap', app => {
         extractedCharacters: Number(providedContext.extractedCharacters) || providedContext.text.length,
         truncated: providedContext.truncated === true
       } : undefined;
-      return res.json(await chat(message, cds.db, documentContext));
+      userId = validateActorId(currentUser(req).id);
+      conversationId = await getOrCreateConversation(cds.db, userId, req.body?.conversationId);
+      const history = await loadConversationMessages(cds.db, conversationId, userId);
+      startedAt = new Date().toISOString();
+      const result = await chat(message, cds.db, documentContext, currentUser(req), {
+        conversationId,
+        history
+      });
+      if (MEMORY_ENABLED && !documentContext) {
+        await saveConversationTurn(cds.db, conversationId, userId, message, result.reply);
+      }
+      result.execution = await recordExecution(cds.db, userId, conversationId, result.execution);
+      return res.json({ ...result, conversationId, memoryEnabled: MEMORY_ENABLED });
     } catch (error) {
-      return res.status(502).json({ error: error.message });
+      const execution = error.execution || {
+        status: 'failed',
+        startedAt: startedAt || new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        errorCategory: error.category || 'agent_error',
+        steps: []
+      };
+      if (userId) {
+        error.execution = await recordExecution(cds.db, userId, conversationId, execution);
+      }
+      return res.status(error.statusCode || (error instanceof TypeError ? 400 : error.category === 'execution_timeout' ? 504 : 502))
+        .json({ error: error.message, execution: error.execution || execution, conversationId: conversationId || null });
     }
   });
 
-  app.post('/api/documents/analyze', parseDocumentUpload, async (req, res) => {
+  app.get('/api/agent/history', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const userId = validateActorId(currentUser(req).id);
+      const [conversations, executions] = await Promise.all([
+        listConversations(cds.db, userId),
+        listExecutions(cds.db, userId)
+      ]);
+      return res.json({ memoryEnabled: MEMORY_ENABLED, conversations, executions });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/agent/conversations/:id', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const userId = validateActorId(currentUser(req).id);
+      return res.json(await readConversation(cds.db, userId, req.params.id));
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/agent/conversations/:id', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const userId = validateActorId(currentUser(req).id);
+      const deleted = await clearConversations(cds.db, userId, req.params.id);
+      return res.json({ deleted });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/agent/history', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const userId = validateActorId(currentUser(req).id);
+      const deleted = await clearAgentHistory(cds.db, userId);
+      return res.json({ deleted });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/agent/executions', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const userId = validateActorId(currentUser(req).id);
+      return res.json(await listExecutions(cds.db, userId));
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/documents/analyze', requireRole('CreditReader'), parseDocumentUpload, async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Choose a PDF, DOCX, or TXT document to upload.' });
       let extracted;
@@ -202,7 +268,7 @@ cds.on('bootstrap', app => {
         extractedCharacters: extracted.extractedCharacters,
         truncated: extracted.truncated
       };
-      const result = await chat('Read this document and summarize its credit-related facts, customer references, risks, and useful next steps.', cds.db, documentContext);
+      const result = await chat('Read this document and summarize its credit-related facts, customer references, risks, and useful next steps.', cds.db, documentContext, currentUser(req));
       return res.json({ ...documentContext, reply: result.reply, offline: result.offline });
     } catch (error) {
       return res.status(502).json({ error: error.message });

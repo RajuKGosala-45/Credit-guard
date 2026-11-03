@@ -1,0 +1,89 @@
+_schema-version: "3.3"
+ID: credit-guard
+version: 1.0.0
+description: Credit Guard CAP application with read-only ABAP Environment integration
+
+modules:
+  - name: credit-guard-db-deployer
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+    requires:
+      - name: credit-guard-db
+
+  - name: credit-guard-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      buildpack: nodejs_buildpack
+      instances: 1
+      memory: 768M
+      disk-quota: 1G
+      health-check-type: http
+      health-check-http-endpoint: /health/ready
+      health-check-invocation-timeout: 10
+    properties:
+      CDS_ENV: production
+      NODE_ENV: production
+      ABAP_DESTINATION_NAME: CREDIT_GUARD_ABAP
+      CREDIT_GUARD_AGENT_DATA_SOURCE: abap
+      CDS_FEATURES_TEST_DATA: "false"
+      ABAP_HTTP_TIMEOUT_MS: "10000"
+      ABAP_MAX_PAGES: "20"
+      ABAP_PAGE_SIZE: "100"
+    requires:
+      - name: credit-guard-db
+      - name: credit-guard-xsuaa
+      - name: credit-guard-destination
+    provides:
+      - name: credit-guard-srv-api
+        properties:
+          url: ${default-url}
+
+  - name: credit-guard-approuter
+    type: approuter.nodejs
+    path: approuter
+    parameters:
+      buildpack: nodejs_buildpack
+      instances: 1
+      memory: 256M
+      disk-quota: 512M
+    requires:
+      - name: credit-guard-xsuaa
+      - name: credit-guard-destination
+      - name: credit-guard-srv-api
+        group: destinations
+        properties:
+          name: credit-guard-srv-api
+          url: ~{url}
+          forwardAuthToken: true
+
+resources:
+  - name: credit-guard-db
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+
+  - name: credit-guard-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: xs-security.json
+      config:
+        xsappname: credit-guard
+
+  - name: credit-guard-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npm run build:cf
