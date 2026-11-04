@@ -199,6 +199,10 @@ function taskSummary(task, results, failed = false) {
   if (task.toolName === 'list_customers_over_threshold') {
     return `Retrieved ${results[0].length} customer summaries from the configured utilization threshold.`;
   }
+  if (task.toolName === 'list_limit_requests' && results[0].length === 0) {
+    const status = (task.toolInput.status || 'Pending').toLowerCase();
+    return `No ${status} credit-limit requests were found.`;
+  }
   if (task.toolName === 'get_customer') {
     return results.length === 1
       ? 'Retrieved deterministic customer exposure and open-item analysis.'
@@ -250,9 +254,8 @@ function meetsCompletionCriteria(task, result) {
     'exposure_by',
     'list_limit_requests'
   ].includes(task.toolName);
-  if (expectedArray !== Array.isArray(result)
-    || result === null
-    || (Array.isArray(result) && result.length === 0)) return false;
+  if (result === null || result === undefined || expectedArray !== Array.isArray(result)) return false;
+  if (expectedArray && result.length === 0) return true;
   const records = Array.isArray(result) ? result : [result];
   if (records.some(record => !record || typeof record !== 'object' || Array.isArray(record))) return false;
   const structure = {
@@ -1183,5 +1186,6 @@ module.exports = {
   toolOutputs,
   toolPermissions,
   toolDefinitions,
+  meetsCompletionCriteria,
   validateToolInput
 };

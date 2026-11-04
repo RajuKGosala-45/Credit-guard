@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const cds = require('@sap/cds');
-const { chat } = require('../srv/agent');
+const { chat, meetsCompletionCriteria } = require('../srv/agent');
 
 const reader = new cds.User({ id: 'reader', roles: ['CreditReader'] });
 const requester = new cds.User({ id: 'requester', roles: ['CreditReader', 'CreditRequester'] });
@@ -532,10 +532,152 @@ test('does not invent a high-risk ranking when the model omits clarification', a
     assert.equal(JSON.stringify(result).includes('private proposal backend detail'), false);
   });
 
-  test('empty or structurally invalid tool results are not marked successful', async () => {
-    const result = await chat('Find customers above the threshold.', database([]), undefined, reader, {
+  test('legitimate empty read-only lists are successful and clearly summarized', async t => {
+    const cases = [
+      {
+        name: 'no customers above the threshold',
+        toolName: 'list_customers_over_threshold',
+        input: { min_utilisation: 0.8 },
+        summary: 'Retrieved 0 customer summaries from the configured utilization threshold.'
+      },
+      {
+        name: 'no exposure groups',
+        toolName: 'exposure_by',
+        input: { group: 'country' },
+        requiredFields: ['label', 'exposure', 'creditLimit'],
+        summary: 'Completed the authorized registered-tool operation.'
+      },
+      {
+        name: 'no pending requests',
+        toolName: 'list_limit_requests',
+        input: { status: 'Pending' },
+        summary: 'No pending credit-limit requests were found.'
+      }
+    ];
+    for (const scenario of cases) {
+      await t.test(scenario.name, async () => {
+        const result = await chat(`Run ${scenario.name}.`, database([]), undefined, reader, {
+          provider: providerFor(plan([task('empty-list', scenario.toolName, scenario.input, {
+            requiredFields: scenario.requiredFields
+          })]))
+        });
+
+        assert.equal(result.plan.tasks[0].status, 'COMPLETED');
+        assert.equal(result.taskResults[0].status, 'SUCCEEDED');
+        assert.equal(result.taskResults[0].summary, scenario.summary);
+        assert.equal(result.executionSummary.completed, 1);
+        assert.equal(result.executionSummary.failed, 0);
+      });
+    }
+  });
+
+  test('valid non-empty read-only list results remain successful', async () => {
+    const db = database();
+    const originalRun = db.run.bind(db);
+    db.run = async query => {
+      if (query.SELECT?.from.ref[0] === 'credit.LimitRequests') {
+        return [{ ID: 'R001', status: 'Pending', customer_ID: 'C001' }];
+      }
+      return originalRun(query);
+    };
+    const result = await chat('List pending requests.', db, undefined, reader, {
       provider: providerFor(plan([
-        task('threshold', 'list_customers_over_threshold', { min_utilisation: 0.8 })
+        task('pending-requests', 'list_limit_requests', { status: 'Pending' })
+      ]))
+    });
+
+    assert.equal(result.plan.tasks[0].status, 'COMPLETED');
+    assert.equal(result.taskResults[0].status, 'SUCCEEDED');
+  });
+
+  test('tool result validation rejects null, undefined, and malformed values', () => {
+    const listTask = task('pending-requests', 'list_limit_requests', { status: 'Pending' });
+    const validRow = { ID: 'R001', status: 'Pending', customer_ID: 'C001' };
+    assert.equal(meetsCompletionCriteria(listTask, []), true);
+    assert.equal(meetsCompletionCriteria(listTask, [validRow]), true);
+    assert.equal(meetsCompletionCriteria(listTask, null), false);
+    assert.equal(meetsCompletionCriteria(listTask, undefined), false);
+    assert.equal(meetsCompletionCriteria(listTask, [null]), false);
+    assert.equal(meetsCompletionCriteria(listTask, [{ ID: 'R001' }]), false);
+    assert.equal(meetsCompletionCriteria(listTask, {}), false);
+  });
+
+  test('empty arrays are not accepted from tools whose result contract is an object', () => {
+    const customerTask = task('customer-detail', 'get_customer', { customer_id: 'C001' });
+    assert.equal(meetsCompletionCriteria(customerTask, []), false);
+    assert.equal(meetsCompletionCriteria(customerTask, null), false);
+  });
+
+  test('an actual tool failure remains a failed task, not an empty success', async () => {
+    const result = await chat(
+      'Explain customer C001.',
+      database([customer('C001')], { failOpenItems: true }),
+      undefined,
+      reader,
+      {
+        provider: providerFor(plan([
+          task('customer-detail', 'get_customer', { customer_id: 'C001' })
+        ]))
+      }
+    );
+
+    assert.equal(result.plan.tasks[0].status, 'FAILED');
+    assert.equal(result.taskResults[0].status, 'FAILED');
+    assert.equal(result.executionSummary.failed, 1);
+  });
+
+  test('empty list results remain valid when resuming an eligible plan', async () => {
+    const savedPlan = {
+      planId: 'empty-recovery-plan',
+      version: 1,
+      objective: 'Check pending requests.',
+      status: 'PARTIALLY_COMPLETED',
+      createdAt: now,
+      tasks: [
+        {
+          ...task('completed-read', 'get_customer', { customer_id: 'C001' }),
+          requiredInputs: ['customer_id'],
+          status: 'COMPLETED',
+          attemptCount: 1,
+          startedAt: now,
+          completedAt: now
+        },
+        {
+          ...task('pending-requests', 'list_limit_requests', { status: 'Pending' }),
+          requiredInputs: ['status'],
+          status: 'PENDING',
+          attemptCount: 0
+        }
+      ]
+    };
+    const result = await chat('Resume the saved execution.', database(), undefined, reader, {
+      executionId: 'empty-recovery-execution',
+      resumePlan: savedPlan,
+      taskResults: [{
+        taskId: 'completed-read',
+        status: 'SUCCEEDED',
+        summary: 'Previously completed customer analysis.',
+        completedAt: now
+      }],
+      provider: providerFor(null)
+    });
+
+    assert.deepEqual(result.plan.tasks.map(item => item.status), ['COMPLETED', 'COMPLETED']);
+    assert.equal(result.taskResults[1].status, 'SUCCEEDED');
+    assert.equal(result.taskResults[1].summary, 'No pending credit-limit requests were found.');
+    assert.equal(result.executionSummary.completed, 2);
+  });
+
+  test('malformed registered-tool output is not marked successful', async () => {
+    const db = database();
+    const originalRun = db.run.bind(db);
+    db.run = async query => {
+      if (query.SELECT?.from.ref[0] === 'credit.LimitRequests') return [{ ID: 'R001' }];
+      return originalRun(query);
+    };
+    const result = await chat('List pending requests.', db, undefined, reader, {
+      provider: providerFor(plan([
+        task('pending-requests', 'list_limit_requests', { status: 'Pending' })
       ]))
     });
 

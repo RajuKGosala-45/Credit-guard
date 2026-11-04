@@ -52,8 +52,17 @@ document.querySelector('#run-monitoring').addEventListener('click', async event 
   const button = event.currentTarget;
   button.disabled = true;
   try {
-    await api.runMonitoring();
+    const run = await api.runMonitoring();
     await loadMonitoring();
+    if (run.status === 'QUEUED' || run.status === 'RUNNING') {
+      await api.waitForMonitoringRun(run.id, {
+        onStatus: current => {
+          document.querySelector('#monitoring-status').textContent =
+            `Monitoring run ${current.status.toLowerCase()} · waiting for a terminal result.`;
+        }
+      });
+      await loadMonitoring();
+    }
   } catch (error) {
     showError(error.message);
   } finally {

@@ -116,10 +116,19 @@ entity MonitoringRuns {
       advisorySource    : String(24);
       advisoryErrorCategory: String(40);
       errorCategory     : String(40);
-      attemptCount      : Integer not null default 1;
+      attemptCount      : Integer not null default 0;
       recoveryStatus    : String(24) not null;
       leaseUntil        : Timestamp;
       triggeredBy       : String(100) not null;
+      workerToken       : String(36);
+}
+
+entity MonitoringWorkerLocks {
+  key ID          : String(32);
+      run_ID      : UUID;
+      claimToken  : String(36);
+      leaseUntil  : Timestamp not null;
+      updatedAt   : Timestamp not null;
 }
 
 @assert.unique.runCustomer: [run_ID, customer_ID]

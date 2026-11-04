@@ -32,6 +32,10 @@ modules:
       ABAP_HTTP_TIMEOUT_MS: "10000"
       ABAP_MAX_PAGES: "20"
       ABAP_PAGE_SIZE: "100"
+      MONITORING_WORKER_POLL_MS: "1000"
+      MONITORING_WORKER_DRAIN_TIMEOUT_MS: "8000"
+      MONITORING_EXECUTION_DEADLINE_MS: "120000"
+      MONITORING_ADVISORY_TIMEOUT_MS: "10000"
     requires:
       - name: credit-guard-db
       - name: credit-guard-xsuaa

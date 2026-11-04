@@ -35,7 +35,8 @@ Browser (plain HTML, CSS, JavaScript)
   └─ /credit UI ── /api REST routes ── CAP services and SQLite/HANA
                                   ├── shared credit rules
                                   ├── bounded agent and LLM provider
-                                  ├── scheduled monitoring, findings, and alerts
+                                  ├── HANA-backed monitoring queue and worker
+                                  ├── findings, alerts, and run-status polling
                                   └── optional ABAP provider
                                        └── SAP Cloud SDK Destination
                                            └── custom ABAP OData service
@@ -113,7 +114,7 @@ The server derives permissions from the authenticated CAP identity. AI tools may
 
 ## 13. Installation and Setup
 
-Prerequisites: Node.js 20 LTS is recommended for the CAP application, with npm. The separate App Router manifest requires Node.js 22 or 24.
+Prerequisites: Node.js 22 LTS and npm are required for both the CAP application and the separate App Router.
 
 ```powershell
 npm.cmd ci

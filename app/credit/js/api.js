@@ -1,24 +1,105 @@
-async function request(path, options = {}) {
-  let response;
+const CSRF_TOKEN_ENDPOINT = '/credit/index.html';
+let csrfToken;
+let csrfTokenPromise;
+
+function isFormData(body) {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
+function isStateChangingMethod(method) {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+}
+
+async function fetchSameOrigin(path, options) {
   try {
-    response = await fetch(path, {
+    return await fetch(path, {
       ...options,
-      headers: {
-        ...(options.body instanceof FormData ? {} : { 'content-type': 'application/json' }),
-        ...options.headers
-      }
+      credentials: options.credentials || 'same-origin'
     });
   } catch {
     throw new Error('Cannot reach Credit Guard. Check that the server is running on port 4005, then try again.');
   }
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `The request failed (${response.status}). Try again.`);
+}
+
+async function readResponseBody(response) {
+  return response.json().catch(() => ({}));
+}
+
+function throwResponseError(response, body) {
+  throw new Error(body.error || `The request failed (${response.status}). Try again.`);
+}
+
+async function acquireCsrfToken() {
+  const response = await fetchSameOrigin(CSRF_TOKEN_ENDPOINT, {
+    method: 'GET',
+    headers: { 'X-CSRF-Token': 'Fetch' }
+  });
+  if (!response.ok) {
+    throwResponseError(response, await readResponseBody(response));
+  }
+  const token = response.headers.get('X-CSRF-Token');
+  if (!token || ['fetch', 'required'].includes(token.toLowerCase())) {
+    throw new Error('Credit Guard could not establish a secure browser session. Reload the page and try again.');
+  }
+  await response.text();
+  return token;
+}
+
+async function getCsrfToken() {
+  if (csrfToken) return csrfToken;
+  if (!csrfTokenPromise) csrfTokenPromise = acquireCsrfToken();
+  try {
+    csrfToken = await csrfTokenPromise;
+    return csrfToken;
+  } finally {
+    csrfTokenPromise = undefined;
+  }
+}
+
+function invalidateCsrfToken(token) {
+  if (csrfToken === token) csrfToken = undefined;
+}
+
+async function request(path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  const stateChanging = isStateChangingMethod(method);
+  const token = stateChanging ? await getCsrfToken() : undefined;
+  const headers = new Headers(options.headers || {});
+  if (!isFormData(options.body) && !headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
+  if (stateChanging) headers.set('X-CSRF-Token', token);
+
+  const response = await fetchSameOrigin(path, {
+    ...options,
+    method,
+    headers,
+    credentials: options.credentials || 'same-origin'
+  });
+  const csrfRejected = response.headers.get('X-CSRF-Token')?.toLowerCase() === 'required';
+  if (stateChanging && (csrfRejected || response.status === 401 || response.status === 403)) {
+    invalidateCsrfToken(token);
+  }
+  const body = await readResponseBody(response);
+  if (!response.ok) throwResponseError(response, body);
   return body;
 }
+
+export { request };
 
 export const getDashboard = () => request('/api/dashboard');
 export const getMonitoringSummary = () => request('/api/monitoring/summary');
 export const getMonitoringRuns = (limit = 20) => request(`/api/monitoring/runs?limit=${encodeURIComponent(limit)}`);
+export const getMonitoringRun = runId => request(`/api/monitoring/runs/${encodeURIComponent(runId)}`);
+export async function waitForMonitoringRun(runId, { intervalMs = 2000, onStatus } = {}) {
+  let run;
+  do {
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+    run = await getMonitoringRun(runId);
+    onStatus?.(run);
+  } while (run.status === 'QUEUED' || run.status === 'RUNNING');
+  return run;
+}
 export const getMonitoringFindings = runId => request(`/api/monitoring/runs/${encodeURIComponent(runId)}/findings`);
 export const getMonitoringAlerts = (status = 'ACTIVE') =>
   request(`/api/monitoring/alerts?status=${encodeURIComponent(status)}`);

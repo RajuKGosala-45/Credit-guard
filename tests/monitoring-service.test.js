@@ -71,6 +71,8 @@ test('empty complete portfolios are successful and report zero findings', async 
     now
   });
   assert.equal(result.status, 'COMPLETED');
+  assert.equal(result.complete, true);
+  assert.equal(result.alertResolutionEligible, false);
   assert.equal(result.summary.customersMonitored, 0);
   assert.equal(result.findings.length, 0);
 });
@@ -79,6 +81,18 @@ test('source freshness is unknown unless an upstream data timestamp is supplied'
   const result = normalizeSnapshot(snapshot(), { now, maxSourceAgeMs: 1000 });
   assert.equal(result.freshness, 'UNKNOWN');
   assert.equal(result.status, 'COMPLETED');
+  assert.equal(result.complete, true);
+  assert.equal(result.alertResolutionEligible, false);
+});
+
+test('fresh complete non-empty snapshots are eligible to resolve absent alert conditions', () => {
+  const result = normalizeSnapshot(snapshot([customer()], {
+    sourceTimestamp: now.toISOString()
+  }), { now, maxSourceAgeMs: 1000 });
+  assert.equal(result.status, 'COMPLETED');
+  assert.equal(result.freshness, 'FRESH');
+  assert.equal(result.complete, true);
+  assert.equal(result.alertResolutionEligible, true);
 });
 
 test('old source timestamps mark monitoring stale without claiming healthy data', () => {
@@ -87,14 +101,20 @@ test('old source timestamps mark monitoring stale without claiming healthy data'
   }), { now, maxSourceAgeMs: 60 * 60 * 1000 });
   assert.equal(result.status, 'STALE');
   assert.equal(result.freshness, 'STALE');
+  assert.equal(result.alertResolutionEligible, false);
 });
 
 test('explicitly incomplete provider snapshots are reported partial', () => {
-  const result = normalizeSnapshot(snapshot([], { complete: false }), {
+  const result = normalizeSnapshot(snapshot([customer()], {
+    complete: false,
+    sourceTimestamp: now.toISOString()
+  }), {
     now,
     maxSourceAgeMs: 1000
   });
   assert.equal(result.status, 'PARTIAL');
+  assert.equal(result.complete, false);
+  assert.equal(result.alertResolutionEligible, false);
 });
 
 test('invalid or incomplete snapshots fail instead of appearing healthy', () => {

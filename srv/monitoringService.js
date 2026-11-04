@@ -1,14 +1,9 @@
 const { createPortfolioDataProvider } = require('./portfolioDataProvider');
-const { generateMonitoringSummary } = require('./monitoringSummary');
 const {
-  claimMonitoringRecovery,
-  completeMonitoringRun,
   createMonitoringRun,
-  dispatchNotificationOutbox,
-  failMonitoringRun,
   getMonitoringRun,
   listMonitoringFindings,
-  saveMonitoringAdvisory
+  queueMonitoringRecovery
 } = require('./monitoringStore');
 
 const RULES_VERSION = '1';
@@ -147,11 +142,18 @@ function normalizeSnapshot(snapshot, { now, maxSourceAgeMs }) {
   const freshness = sourceTimestamp
     ? (now.getTime() - new Date(sourceTimestamp).getTime() > maxSourceAgeMs ? 'STALE' : 'FRESH')
     : 'UNKNOWN';
-  const status = snapshot.complete === false ? 'PARTIAL'
+  const complete = snapshot.complete !== false;
+  const status = !complete ? 'PARTIAL'
     : freshness === 'STALE' ? 'STALE' : 'COMPLETED';
   const findings = createFindings(customers, snapshot.source, retrievedAt);
+  const alertResolutionEligible = status === 'COMPLETED'
+    && complete
+    && freshness === 'FRESH'
+    && customers.length > 0;
   return {
     status,
+    complete,
+    alertResolutionEligible,
     source: snapshot.source,
     retrievedAt,
     sourceTimestamp,
@@ -162,15 +164,15 @@ function normalizeSnapshot(snapshot, { now, maxSourceAgeMs }) {
   };
 }
 
-async function loadSnapshot({ db, user, source, abapClient, provider, now }) {
-  if (provider) return provider.getSnapshot();
+async function loadSnapshot({ db, user, source, abapClient, provider, now, signal, deadlineAt }) {
+  if (provider) return provider.getSnapshot({ signal, deadlineAt });
   const customerProvider = createPortfolioDataProvider({
     db,
     user,
     source,
     abapClient
   });
-  const rows = await customerProvider.listCustomers();
+  const rows = await customerProvider.listCustomers({ signal, deadlineAt });
   if (customerProvider.source === 'local') {
     return {
       source: 'CAP database',
@@ -199,6 +201,8 @@ async function monitorPortfolio({
   abapClient,
   provider,
   now = new Date(),
+  signal,
+  deadlineAt,
   maxSourceAgeMs = DEFAULT_MAX_SOURCE_AGE_MS
 } = {}) {
   assertReader(user);
@@ -208,7 +212,11 @@ async function monitorPortfolio({
   if (!Number.isSafeInteger(maxSourceAgeMs) || maxSourceAgeMs < 0) {
     throw new TypeError('The maximum source age is invalid.');
   }
-  const snapshot = await loadSnapshot({ db, user, source, abapClient, provider, now });
+  if (signal?.aborted) throw signal.reason || new Error('Monitoring was cancelled.');
+  const snapshot = await loadSnapshot({
+    db, user, source, abapClient, provider, now, signal, deadlineAt
+  });
+  if (signal?.aborted) throw signal.reason || new Error('Monitoring was cancelled.');
   return normalizeSnapshot(snapshot, { now, maxSourceAgeMs });
 }
 
@@ -290,64 +298,12 @@ async function executeMonitoringRun({
     triggeredBy: user.id,
     now
   });
+  const currentRun = await getMonitoringRun(db, claimed.run.ID);
   if (!claimed.created) {
     const findings = await listMonitoringFindings(db, claimed.run.ID);
-    return { ...publicRun(claimed.run, findings), duplicate: true };
+    return { ...publicRun(currentRun || claimed.run, findings), duplicate: true };
   }
-  let result;
-  let run;
-  try {
-    result = await monitorPortfolio({
-      db, user, source, abapClient, provider, now
-    });
-    run = await completeMonitoringRun(
-      db, claimed.run.ID, result, user.id, new Date(), claimed.run.attemptCount
-    );
-  } catch (error) {
-    const failed = await failMonitoringRun(db, claimed.run.ID, error, new Date(), claimed.run.attemptCount);
-    if (!failed) throw error;
-    return publicRun(failed);
-  }
-  const advisory = await generateMonitoringSummary(result, { provider: summaryProvider });
-  let advisoryErrorCategory = advisory.errorCategory;
-  try {
-    await saveMonitoringAdvisory(db, claimed.run.ID, advisory);
-  } catch {
-    advisoryErrorCategory = 'monitoring_persistence_error';
-  }
-  let notificationFailures = 0;
-  try {
-    notificationFailures = (await dispatchNotificationOutbox(db, {
-      deliver: deliverNotification,
-      now: new Date()
-    })).filter(item => item.status === 'FAILED').length;
-  } catch {
-    notificationFailures = 1;
-  }
-  const findings = await listMonitoringFindings(db, claimed.run.ID);
-  return {
-    ...publicRun({
-      ...run,
-      source: result.source,
-      retrievedAt: result.retrievedAt,
-      sourceTimestamp: result.sourceTimestamp,
-      freshness: result.freshness,
-      rulesVersion: result.rulesVersion,
-      summary: JSON.stringify({
-        status: result.status,
-        source: result.source,
-        retrievedAt: result.retrievedAt,
-        sourceTimestamp: result.sourceTimestamp,
-        freshness: result.freshness,
-        rulesVersion: result.rulesVersion,
-        ...result.summary
-      }),
-      advisorySummary: advisory.text,
-      advisorySource: advisory.source,
-      advisoryErrorCategory
-    }, findings),
-    notificationFailures
-  };
+  return { ...publicRun(currentRun || claimed.run), duplicate: false };
 }
 
 async function recoverMonitoringRun({
@@ -362,59 +318,9 @@ async function recoverMonitoringRun({
   deliverNotification
 } = {}) {
   assertReader(user);
-  const run = await claimMonitoringRecovery(db, runId, now);
-  let result;
-  let completed;
-  try {
-    result = await monitorPortfolio({
-      db, user, source, abapClient, provider, now
-    });
-    completed = await completeMonitoringRun(db, run.ID, result, user.id, new Date(), run.attemptCount);
-  } catch (error) {
-    const failed = await failMonitoringRun(db, run.ID, error, new Date(), run.attemptCount);
-    if (!failed) throw error;
-    return publicRun(failed);
-  }
-  const advisory = await generateMonitoringSummary(result, { provider: summaryProvider });
-  let advisoryErrorCategory = advisory.errorCategory;
-  try {
-    await saveMonitoringAdvisory(db, run.ID, advisory);
-  } catch {
-    advisoryErrorCategory = 'monitoring_persistence_error';
-  }
-  let notificationFailures = 0;
-  try {
-    notificationFailures = (await dispatchNotificationOutbox(db, {
-      deliver: deliverNotification,
-      now: new Date()
-    })).filter(item => item.status === 'FAILED').length;
-  } catch {
-    notificationFailures = 1;
-  }
-  const findings = await listMonitoringFindings(db, run.ID);
-  return {
-    ...publicRun({
-      ...completed,
-      source: result.source,
-      retrievedAt: result.retrievedAt,
-      sourceTimestamp: result.sourceTimestamp,
-      freshness: result.freshness,
-      rulesVersion: result.rulesVersion,
-      summary: JSON.stringify({
-        status: result.status,
-        source: result.source,
-        retrievedAt: result.retrievedAt,
-        sourceTimestamp: result.sourceTimestamp,
-        freshness: result.freshness,
-        rulesVersion: result.rulesVersion,
-        ...result.summary
-      }),
-      advisorySummary: advisory.text,
-      advisorySource: advisory.source,
-      advisoryErrorCategory
-    }, findings),
-    notificationFailures
-  };
+  const queued = await queueMonitoringRecovery(db, runId, now);
+  const current = await getMonitoringRun(db, runId);
+  return publicRun(current || queued);
 }
 
 module.exports = {

@@ -4,6 +4,7 @@ const { SELECT, INSERT, UPDATE, DELETE } = cds.ql;
 
 const MAX_MONITORING_ATTEMPTS = 3;
 const DEFAULT_LEASE_MS = 15 * 60 * 1000;
+const WORKER_LOCK_ID = 'PORTFOLIO';
 const MAX_HISTORY = 100;
 const ALERT_CONDITIONS = new Set([
   'CRITICAL',
@@ -36,6 +37,8 @@ function requireIdentifier(value, label) {
 function runSummary(result) {
   return JSON.stringify({
     status: result.status,
+    complete: result.complete === true,
+    alertResolutionEligible: result.alertResolutionEligible === true,
     source: result.source,
     retrievedAt: result.retrievedAt,
     sourceTimestamp: result.sourceTimestamp,
@@ -54,8 +57,7 @@ async function createMonitoringRun(db, {
   runKind,
   source,
   triggeredBy,
-  now = new Date(),
-  leaseMs = DEFAULT_LEASE_MS
+  now = new Date()
 }) {
   requireIdentifier(slotKey, 'Monitoring slot key');
   if (!['MANUAL', 'SCHEDULED', 'RECOVERY'].includes(runKind)) {
@@ -68,13 +70,13 @@ async function createMonitoringRun(db, {
     ID: id,
     slotKey,
     runKind,
-    status: 'RUNNING',
+    status: 'QUEUED',
     source: source || null,
     startedAt,
     rulesVersion: '1',
-    attemptCount: 1,
-    recoveryStatus: 'ACTIVE',
-    leaseUntil: new Date(now.getTime() + leaseMs).toISOString(),
+    attemptCount: 0,
+    recoveryStatus: 'AVAILABLE',
+    leaseUntil: null,
     triggeredBy: actor
   };
   try {
@@ -85,6 +87,183 @@ async function createMonitoringRun(db, {
     if (existing) return { run: existing, created: false };
     throw error;
   }
+}
+
+async function ensureMonitoringWorkerLock(db, now = new Date()) {
+  const query = SELECT.one.from('credit.MonitoringWorkerLocks').where({ ID: WORKER_LOCK_ID });
+  if ((await db.run(query)) || null) return;
+  try {
+    await db.run(INSERT.into('credit.MonitoringWorkerLocks').entries({
+      ID: WORKER_LOCK_ID,
+      run_ID: null,
+      claimToken: null,
+      leaseUntil: new Date(0).toISOString(),
+      updatedAt: now.toISOString()
+    }));
+  } catch (error) {
+    if (!await db.run(query)) throw error;
+  }
+}
+
+function workerLockWhere(lock) {
+  return {
+    ID: lock.ID,
+    run_ID: lock.run_ID,
+    claimToken: lock.claimToken,
+    leaseUntil: lock.leaseUntil
+  };
+}
+
+async function releaseMonitoringWorkerLock(tx, runId, claimToken, now) {
+  const changed = await tx.run(UPDATE('credit.MonitoringWorkerLocks')
+    .set({
+      run_ID: null,
+      claimToken: null,
+      leaseUntil: new Date(0).toISOString(),
+      updatedAt: now.toISOString()
+    })
+    .where({ ID: WORKER_LOCK_ID, run_ID: runId, claimToken }));
+  if (changed !== 1) {
+    const error = new Error('Monitoring worker claim is no longer active.');
+    error.statusCode = 409;
+    throw error;
+  }
+}
+
+async function claimNextMonitoringRun(db, {
+  now = new Date(),
+  leaseMs = DEFAULT_LEASE_MS
+} = {}) {
+  if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+    throw new TypeError('Monitoring worker lease is invalid.');
+  }
+  await ensureMonitoringWorkerLock(db, now);
+  return db.tx(async tx => {
+    const lock = (await tx.run(SELECT.one.from('credit.MonitoringWorkerLocks')
+      .where({ ID: WORKER_LOCK_ID }))) || null;
+    if (!lock) throw new Error('Monitoring worker lock is unavailable.');
+
+    const nowIso = now.toISOString();
+    const lockIsActive = lock.run_ID
+      && new Date(lock.leaseUntil).getTime() > now.getTime();
+    if (lockIsActive) return null;
+
+    const orphanedRuns = (await tx.run(SELECT.from('credit.MonitoringRuns')
+      .where({ status: 'RUNNING' })
+      .orderBy('startedAt asc')
+      .limit(MAX_HISTORY)))
+      .filter(run => !run.workerToken && run.leaseUntil
+        && new Date(run.leaseUntil).getTime() <= now.getTime());
+    for (const orphaned of orphanedRuns) {
+      const exhausted = orphaned.attemptCount >= MAX_MONITORING_ATTEMPTS;
+      await tx.run(UPDATE('credit.MonitoringRuns')
+        .set({
+          status: exhausted ? 'FAILED' : 'QUEUED',
+          recoveryStatus: exhausted ? 'NOT_AVAILABLE' : 'AVAILABLE',
+          startedAt: nowIso,
+          completedAt: exhausted ? nowIso : null,
+          errorCategory: 'worker_lease_expired',
+          leaseUntil: null
+        })
+        .where({
+          ID: orphaned.ID,
+          status: 'RUNNING',
+          attemptCount: orphaned.attemptCount,
+          workerToken: null,
+          leaseUntil: orphaned.leaseUntil
+        }));
+    }
+
+    if (lock.run_ID) {
+      const expiredRun = (await tx.run(SELECT.one.from('credit.MonitoringRuns')
+        .where({ ID: lock.run_ID }))) || null;
+      if (expiredRun?.status === 'RUNNING' && expiredRun.workerToken !== lock.claimToken) {
+        const error = new Error('Expired monitoring claim does not match the run token.');
+        error.statusCode = 409;
+        throw error;
+      }
+      if (expiredRun?.status === 'RUNNING' && expiredRun.workerToken === lock.claimToken) {
+        const exhausted = expiredRun.attemptCount >= MAX_MONITORING_ATTEMPTS;
+        const changed = await tx.run(UPDATE('credit.MonitoringRuns')
+          .set({
+            status: exhausted ? 'FAILED' : 'QUEUED',
+            recoveryStatus: exhausted ? 'NOT_AVAILABLE' : 'AVAILABLE',
+            completedAt: exhausted ? nowIso : null,
+            errorCategory: 'worker_lease_expired',
+            leaseUntil: null,
+            workerToken: null
+          })
+          .where({
+            ID: expiredRun.ID,
+            status: 'RUNNING',
+            attemptCount: expiredRun.attemptCount,
+            workerToken: lock.claimToken
+          }));
+        if (changed !== 1) return null;
+      }
+    }
+
+    const queued = (await tx.run(SELECT.from('credit.MonitoringRuns')
+      .where({ status: 'QUEUED' })
+      .orderBy('startedAt asc')
+      .limit(1)))[0] || null;
+    if (!queued) {
+      if (lock.run_ID) {
+        await tx.run(UPDATE('credit.MonitoringWorkerLocks')
+          .set({
+            run_ID: null,
+            claimToken: null,
+            leaseUntil: new Date(0).toISOString(),
+            updatedAt: nowIso
+          })
+          .where(workerLockWhere(lock)));
+      }
+      return null;
+    }
+
+    const claimToken = randomUUID();
+    const leaseUntil = new Date(now.getTime() + leaseMs).toISOString();
+    const lockChanged = await tx.run(UPDATE('credit.MonitoringWorkerLocks')
+      .set({ run_ID: queued.ID, claimToken, leaseUntil, updatedAt: nowIso })
+      .where(workerLockWhere(lock)));
+    if (lockChanged !== 1) return null;
+
+    const attemptCount = queued.attemptCount + 1;
+    const runChanged = await tx.run(UPDATE('credit.MonitoringRuns')
+      .set({
+        status: 'RUNNING',
+        recoveryStatus: 'ACTIVE',
+        attemptCount,
+        leaseUntil,
+        workerToken: claimToken,
+        errorCategory: null,
+        completedAt: null
+      })
+      .where({
+        ID: queued.ID,
+        status: 'QUEUED',
+        attemptCount: queued.attemptCount
+      }));
+    if (runChanged !== 1) {
+      await tx.run(UPDATE('credit.MonitoringWorkerLocks')
+        .set({
+          run_ID: null,
+          claimToken: null,
+          leaseUntil: new Date(0).toISOString(),
+          updatedAt: nowIso
+        })
+        .where({ ID: WORKER_LOCK_ID, run_ID: queued.ID, claimToken }));
+      return null;
+    }
+    return {
+      ...queued,
+      status: 'RUNNING',
+      recoveryStatus: 'ACTIVE',
+      attemptCount,
+      leaseUntil,
+      workerToken: claimToken
+    };
+  });
 }
 
 function alertValues(alert, finding, runId, now) {
@@ -194,7 +373,12 @@ async function synchronizeAlerts(tx, result, runId, actorId, now) {
     }
   }
 
-  if (result.status !== 'COMPLETED') return;
+  const canResolveAlerts = result.alertResolutionEligible === true
+    && result.status === 'COMPLETED'
+    && result.complete === true
+    && result.freshness === 'FRESH'
+    && result.summary?.customersMonitored > 0;
+  if (!canResolveAlerts) return;
   const activeAlerts = await tx.run(SELECT.from('credit.MonitoringAlerts'));
   for (const alert of activeAlerts) {
     if (!['ACTIVE', 'ACKNOWLEDGED'].includes(alert.status)) continue;
@@ -208,11 +392,27 @@ async function synchronizeAlerts(tx, result, runId, actorId, now) {
   }
 }
 
-async function completeMonitoringRun(db, runId, result, actorId, now = new Date(), attemptCount) {
+async function completeMonitoringRun(
+  db,
+  runId,
+  result,
+  actorId,
+  now = new Date(),
+  attemptCount,
+  workerToken,
+  deadlineAt
+) {
   return db.tx(async tx => {
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+      const error = new Error('Monitoring execution exceeded its configured deadline.');
+      error.category = 'monitoring_deadline_exceeded';
+      error.statusCode = 504;
+      throw error;
+    }
     const run = (await tx.run(SELECT.one.from('credit.MonitoringRuns').where({ ID: runId }))) || null;
     if (!run || run.status !== 'RUNNING' || run.recoveryStatus !== 'ACTIVE'
-      || (attemptCount !== undefined && run.attemptCount !== attemptCount)) {
+      || (attemptCount !== undefined && run.attemptCount !== attemptCount)
+      || (workerToken !== undefined && run.workerToken !== workerToken)) {
       const error = new Error('Monitoring run is not claimed for completion.');
       error.statusCode = 409;
       throw error;
@@ -237,7 +437,19 @@ async function completeMonitoringRun(db, runId, result, actorId, now = new Date(
         retrievedAt: finding.retrievedAt
       }));
     }
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+      const error = new Error('Monitoring execution exceeded its configured deadline.');
+      error.category = 'monitoring_deadline_exceeded';
+      error.statusCode = 504;
+      throw error;
+    }
     await synchronizeAlerts(tx, result, runId, actorId, now.toISOString());
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+      const error = new Error('Monitoring execution exceeded its configured deadline.');
+      error.category = 'monitoring_deadline_exceeded';
+      error.statusCode = 504;
+      throw error;
+    }
     const completedAt = now.toISOString();
     const recoveryStatus = result.status === 'COMPLETED' ? 'NOT_AVAILABLE' : 'AVAILABLE';
     const changed = await tx.run(UPDATE('credit.MonitoringRuns')
@@ -252,43 +464,167 @@ async function completeMonitoringRun(db, runId, result, actorId, now = new Date(
         summary: runSummary(result),
         errorCategory: null,
         recoveryStatus,
-        leaseUntil: null
+        leaseUntil: null,
+        workerToken: null
       })
       .where({
         ID: runId,
         status: 'RUNNING',
         recoveryStatus: 'ACTIVE',
-        ...(attemptCount !== undefined ? { attemptCount } : {})
+        ...(attemptCount !== undefined ? { attemptCount } : {}),
+        ...(workerToken !== undefined ? { workerToken } : {})
       }));
     if (changed !== 1) {
       const error = new Error('Monitoring run changed before completion could be committed.');
       error.statusCode = 409;
       throw error;
     }
+    if (workerToken !== undefined) {
+      await releaseMonitoringWorkerLock(tx, runId, workerToken, now);
+    }
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+      const error = new Error('Monitoring execution exceeded its configured deadline.');
+      error.category = 'monitoring_deadline_exceeded';
+      error.statusCode = 504;
+      throw error;
+    }
     return { ...run, status: result.status, completedAt, recoveryStatus };
   });
 }
 
-async function failMonitoringRun(db, runId, error, now = new Date(), attemptCount) {
-  const run = (await db.run(SELECT.one.from('credit.MonitoringRuns').where({ ID: runId }))) || null;
-  if (!run) return null;
-  const recoveryStatus = run.attemptCount < MAX_MONITORING_ATTEMPTS ? 'AVAILABLE' : 'NOT_AVAILABLE';
-  const changed = await db.run(UPDATE('credit.MonitoringRuns')
-    .set({
-      status: 'FAILED',
-      completedAt: now.toISOString(),
-      errorCategory: safeCategory(error),
-      recoveryStatus,
-      leaseUntil: null
-    })
-    .where({
-      ID: runId,
-      status: 'RUNNING',
-      recoveryStatus: 'ACTIVE',
-      ...(attemptCount !== undefined ? { attemptCount } : {})
-    }));
-  if (changed !== 1) return null;
-  return { ...run, status: 'FAILED', errorCategory: safeCategory(error), recoveryStatus };
+async function failMonitoringRun(db, runId, error, now = new Date(), attemptCount, workerToken) {
+  return db.tx(async tx => {
+    const run = (await tx.run(SELECT.one.from('credit.MonitoringRuns').where({ ID: runId }))) || null;
+    if (!run) return null;
+    const recoveryStatus = run.attemptCount < MAX_MONITORING_ATTEMPTS ? 'AVAILABLE' : 'NOT_AVAILABLE';
+    const changed = await tx.run(UPDATE('credit.MonitoringRuns')
+      .set({
+        status: 'FAILED',
+        completedAt: now.toISOString(),
+        errorCategory: safeCategory(error),
+        recoveryStatus,
+        leaseUntil: null,
+        workerToken: null
+      })
+      .where({
+        ID: runId,
+        status: 'RUNNING',
+        recoveryStatus: 'ACTIVE',
+        ...(attemptCount !== undefined ? { attemptCount } : {}),
+        ...(workerToken !== undefined ? { workerToken } : {})
+      }));
+    if (changed !== 1) return null;
+    if (workerToken !== undefined) {
+      await releaseMonitoringWorkerLock(tx, runId, workerToken, now);
+    }
+    return { ...run, status: 'FAILED', errorCategory: safeCategory(error), recoveryStatus };
+  });
+}
+
+async function requeueMonitoringRun(db, runId, now = new Date(), attemptCount, workerToken) {
+  return db.tx(async tx => {
+    const run = (await tx.run(SELECT.one.from('credit.MonitoringRuns').where({ ID: runId }))) || null;
+    if (!run || run.status !== 'RUNNING' || run.recoveryStatus !== 'ACTIVE'
+      || (attemptCount !== undefined && run.attemptCount !== attemptCount)
+      || (workerToken !== undefined && run.workerToken !== workerToken)) {
+      return null;
+    }
+    const exhausted = run.attemptCount >= MAX_MONITORING_ATTEMPTS;
+    const changed = await tx.run(UPDATE('credit.MonitoringRuns')
+      .set({
+        status: exhausted ? 'FAILED' : 'QUEUED',
+        recoveryStatus: exhausted ? 'NOT_AVAILABLE' : 'AVAILABLE',
+        startedAt: exhausted ? run.startedAt : now.toISOString(),
+        completedAt: exhausted ? now.toISOString() : null,
+        errorCategory: exhausted ? 'worker_shutdown_attempts_exhausted' : null,
+        leaseUntil: null,
+        workerToken: null
+      })
+      .where({
+        ID: runId,
+        status: 'RUNNING',
+        recoveryStatus: 'ACTIVE',
+        ...(attemptCount !== undefined ? { attemptCount } : {}),
+        ...(workerToken !== undefined ? { workerToken } : {})
+      }));
+    if (changed !== 1) return null;
+    if (workerToken !== undefined) {
+      await releaseMonitoringWorkerLock(tx, runId, workerToken, now);
+    }
+    return {
+      ...run,
+      status: exhausted ? 'FAILED' : 'QUEUED',
+      recoveryStatus: exhausted ? 'NOT_AVAILABLE' : 'AVAILABLE',
+      completedAt: exhausted ? now.toISOString() : null,
+      errorCategory: exhausted ? 'worker_shutdown_attempts_exhausted' : null,
+      leaseUntil: null,
+      workerToken: null
+    };
+  });
+}
+
+async function queueMonitoringRecovery(db, runId, now = new Date()) {
+  return db.tx(async tx => {
+    const run = (await tx.run(SELECT.one.from('credit.MonitoringRuns').where({ ID: runId }))) || null;
+    if (!run) {
+      const error = new Error('Monitoring run was not found.');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!['FAILED', 'PARTIAL', 'STALE'].includes(run.status)
+      || run.recoveryStatus !== 'AVAILABLE'
+      || run.attemptCount >= MAX_MONITORING_ATTEMPTS) {
+      const error = new Error('Monitoring run is not available for recovery.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const changed = await tx.run(UPDATE('credit.MonitoringRuns')
+      .set({
+        status: 'QUEUED',
+        recoveryStatus: 'AVAILABLE',
+        startedAt: now.toISOString(),
+        completedAt: null,
+        retrievedAt: null,
+        sourceTimestamp: null,
+        freshness: null,
+        summary: null,
+        advisorySummary: null,
+        advisorySource: null,
+        advisoryErrorCategory: null,
+        errorCategory: null,
+        leaseUntil: null,
+        workerToken: null
+      })
+      .where({
+        ID: runId,
+        status: run.status,
+        recoveryStatus: 'AVAILABLE',
+        attemptCount: run.attemptCount
+      }));
+    if (changed !== 1) {
+      const error = new Error('Monitoring recovery is already in progress.');
+      error.statusCode = 409;
+      throw error;
+    }
+    await tx.run(DELETE.from('credit.MonitoringFindings').where({ run_ID: runId }));
+    return {
+      ...run,
+      status: 'QUEUED',
+      recoveryStatus: 'AVAILABLE',
+      startedAt: now.toISOString(),
+      completedAt: null,
+      retrievedAt: null,
+      sourceTimestamp: null,
+      freshness: null,
+      summary: null,
+      advisorySummary: null,
+      advisorySource: null,
+      advisoryErrorCategory: null,
+      errorCategory: null,
+      leaseUntil: null,
+      workerToken: null
+    };
+  });
 }
 
 async function saveMonitoringAdvisory(db, runId, { text, source, errorCategory = null }) {
@@ -450,55 +786,11 @@ async function dispatchNotificationOutbox(db, {
   return results;
 }
 
-async function claimMonitoringRecovery(db, runId, now = new Date(), leaseMs = DEFAULT_LEASE_MS) {
-  const run = await getMonitoringRun(db, runId);
-  if (!run) {
-    const error = new Error('Monitoring run was not found.');
-    error.statusCode = 404;
-    throw error;
-  }
-  const staleRunning = run.status === 'RUNNING'
-    && run.recoveryStatus === 'ACTIVE'
-    && run.leaseUntil
-    && new Date(run.leaseUntil).getTime() <= now.getTime();
-  const recoverable = run.status === 'FAILED' || run.status === 'PARTIAL' || run.status === 'STALE';
-  if ((!staleRunning && (!recoverable || run.recoveryStatus !== 'AVAILABLE'))
-    || run.attemptCount >= MAX_MONITORING_ATTEMPTS) {
-    const error = new Error('Monitoring run is not available for recovery.');
-    error.statusCode = 409;
-    throw error;
-  }
-  const attemptCount = run.attemptCount + 1;
-  const changed = await db.run(UPDATE('credit.MonitoringRuns')
-    .set({
-      status: 'RUNNING',
-      recoveryStatus: 'ACTIVE',
-      attemptCount,
-      startedAt: now.toISOString(),
-      completedAt: null,
-      errorCategory: null,
-      leaseUntil: new Date(now.getTime() + leaseMs).toISOString()
-    })
-    .where({
-      ID: runId,
-      status: run.status,
-      recoveryStatus: run.recoveryStatus,
-      attemptCount: run.attemptCount,
-      ...(staleRunning ? { leaseUntil: run.leaseUntil } : {})
-    }));
-  if (changed !== 1) {
-    const error = new Error('Monitoring recovery is already in progress.');
-    error.statusCode = 409;
-    throw error;
-  }
-  return { ...run, status: 'RUNNING', attemptCount, recoveryStatus: 'ACTIVE' };
-}
-
 module.exports = {
   ALERT_CONDITIONS,
   DEFAULT_LEASE_MS,
   MAX_MONITORING_ATTEMPTS,
-  claimMonitoringRecovery,
+  claimNextMonitoringRun,
   completeMonitoringRun,
   createMonitoringRun,
   dispatchNotificationOutbox,
@@ -511,6 +803,8 @@ module.exports = {
   listMonitoringAlerts,
   listMonitoringFindings,
   listMonitoringRuns,
+  queueMonitoringRecovery,
+  requeueMonitoringRun,
   saveMonitoringAdvisory,
   transitionMonitoringAlert
 };

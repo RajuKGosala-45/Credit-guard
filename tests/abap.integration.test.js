@@ -56,6 +56,14 @@ function emptyDb() {
   return { async run() { return []; } };
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise(resolvePromise => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 test('ABAP connector follows same-origin OData pagination and applies deterministic Credit Guard rules', async () => {
   const requests = [];
   const client = createClient(async (target, config) => {
@@ -93,6 +101,53 @@ test('ABAP connector follows same-origin OData pagination and applies determinis
     '$filter': "CustomerId eq 'C1001'",
     '$top': 1
   });
+});
+
+test('ABAP collection paging stops after cancellation and caps requests to the remaining budget', async () => {
+  const controller = new AbortController();
+  const requests = [];
+  const client = createClient(async (_target, config) => {
+    requests.push(config);
+    controller.abort(Object.assign(new Error('Monitoring deadline exceeded.'), {
+      category: 'monitoring_deadline_exceeded'
+    }));
+    return { status: 200, data: { value: [rawCustomer] } };
+  }, { timeoutMs: 10000 });
+
+  await assert.rejects(client.listCustomerAnalyses({
+    signal: controller.signal,
+    deadlineAt: Date.now() + 5000
+  }), error => error.category === 'monitoring_deadline_exceeded');
+  assert.equal(requests.length, 1);
+  assert.ok(requests[0].timeout <= 5000);
+  assert.equal(requests[0].signal, controller.signal);
+});
+
+test('ABAP collection does not start the next page when cancellation arrives between pages', async () => {
+  const controller = new AbortController();
+  const firstPageStarted = deferred();
+  const finishFirstPage = deferred();
+  const requests = [];
+  const client = createClient(async (_target, config) => {
+    requests.push(config);
+    firstPageStarted.resolve();
+    await finishFirstPage.promise;
+    return {
+      status: 200,
+      data: {
+        value: [rawCustomer],
+        '@odata.nextLink': `${destination.url}/Customers?$skiptoken=next`
+      }
+    };
+  });
+  const result = client.listCustomers({ signal: controller.signal });
+  await firstPageStarted.promise;
+  controller.abort(Object.assign(new Error('Monitoring worker is shutting down.'), {
+    category: 'monitoring_worker_shutdown'
+  }));
+  finishFirstPage.resolve();
+  await assert.rejects(result, error => error.category === 'monitoring_worker_shutdown');
+  assert.equal(requests.length, 1);
 });
 
 test('ABAP connector reports a missing exact customer as 404, without using local records', async () => {

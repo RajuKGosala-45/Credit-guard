@@ -1,86 +1,40 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  claimMonitoringRecovery,
   completeMonitoringRun,
   dispatchNotificationOutbox,
-  MAX_MONITORING_ATTEMPTS
+  failMonitoringRun,
+  requeueMonitoringRun
 } = require('../srv/monitoringStore');
-
-function matches(record, where = []) {
-  for (let index = 0; index < where.length; index += 1) {
-    const field = where[index]?.ref?.[0];
-    if (!field) continue;
-    const value = where[index + 2]?.val;
-    if (record[field] !== value) return false;
-    index += 2;
-  }
-  return true;
-}
+const { createMonitoringDatabase } = require('./support/transactional-monitoring-db');
 
 function database({ runs = [], outbox = [] } = {}) {
-  return {
-    runs,
-    outbox,
-    async run(query) {
-      if (query.SELECT) {
-        const table = query.SELECT.from.ref[0];
-        const records = table === 'credit.MonitoringRuns' ? this.runs
-          : table === 'credit.MonitoringNotificationOutbox' ? this.outbox : [];
-        const where = query.SELECT.where || [];
-        const rows = records.filter(record => matches(record, where));
-        return query.SELECT.one ? rows[0] || null : rows;
-      }
-      if (query.UPDATE) {
-        const table = query.UPDATE.entity.ref[0];
-        const records = table === 'credit.MonitoringRuns' ? this.runs
-          : table === 'credit.MonitoringNotificationOutbox' ? this.outbox : [];
-        const updated = records.filter(record => matches(record, query.UPDATE.where));
-        for (const record of updated) Object.assign(record, query.UPDATE.data);
-        return updated.length;
-      }
-      throw new Error('Unexpected query in monitoring store test.');
-    },
-    async tx(callback) { return callback(this); }
-  };
+  const db = createMonitoringDatabase({
+    tables: {
+      'credit.MonitoringRuns': runs,
+      'credit.MonitoringWorkerLocks': [],
+      'credit.MonitoringFindings': [],
+      'credit.MonitoringAlerts': [],
+      'credit.MonitoringAlertEvents': [],
+      'credit.MonitoringNotificationOutbox': outbox
+    }
+  });
+  db.runs = runs;
+  db.outbox = outbox;
+  return db;
 }
 
 function completionDatabase({ runs = [], alerts = [], findings = [], events = [] } = {}) {
-  const tables = {
-    'credit.MonitoringRuns': runs,
-    'credit.MonitoringAlerts': alerts,
-    'credit.MonitoringFindings': findings,
-    'credit.MonitoringAlertEvents': events
-  };
-  return {
-    tables,
-    async run(query) {
-      if (query.SELECT) {
-        const records = tables[query.SELECT.from.ref[0]] || [];
-        const rows = records.filter(record => matches(record, query.SELECT.where || []));
-        return query.SELECT.one ? rows[0] || null : rows;
-      }
-      if (query.UPDATE) {
-        const records = tables[query.UPDATE.entity.ref[0]] || [];
-        const changed = records.filter(record => matches(record, query.UPDATE.where));
-        for (const record of changed) Object.assign(record, query.UPDATE.data);
-        return changed.length;
-      }
-      if (query.INSERT) {
-        const records = tables[query.INSERT.into.ref[0]];
-        records.push(...query.INSERT.entries);
-        return query.INSERT.entries.length;
-      }
-      if (query.DELETE) {
-        const records = tables[query.DELETE.from.ref[0]] || [];
-        const retained = records.filter(record => !matches(record, query.DELETE.where));
-        tables[query.DELETE.from.ref[0]] = retained;
-        return records.length - retained.length;
-      }
-      throw new Error('Unexpected query in monitoring completion test.');
-    },
-    async tx(callback) { return callback(this); }
-  };
+  return createMonitoringDatabase({
+    tables: {
+      'credit.MonitoringRuns': runs,
+      'credit.MonitoringWorkerLocks': [],
+      'credit.MonitoringFindings': findings,
+      'credit.MonitoringAlerts': alerts,
+      'credit.MonitoringAlertEvents': events,
+      'credit.MonitoringNotificationOutbox': []
+    }
+  });
 }
 
 test('notification outbox retries transient delivery failures within a fixed bound', async () => {
@@ -146,95 +100,131 @@ test('notification outbox moves exhausted deliveries to a terminal failure', asy
   assert.equal(JSON.stringify(record).includes('Private provider error'), false);
 });
 
-test('failed runs can be claimed only once for bounded recovery', async () => {
-  const run = {
-    ID: 'run-1',
-    status: 'FAILED',
-    recoveryStatus: 'AVAILABLE',
-    attemptCount: 1,
-    leaseUntil: null
+function alertForResolution(id, status) {
+  return {
+    ID: id,
+    customer_ID: `C-${id}`,
+    conditionKey: 'WARNING',
+    status
   };
-  const db = database({ runs: [run] });
-  const claims = await Promise.allSettled([
-    claimMonitoringRecovery(db, run.ID, new Date('2026-11-04T00:00:00.000Z')),
-    claimMonitoringRecovery(db, run.ID, new Date('2026-11-04T00:00:00.000Z'))
-  ]);
-  assert.equal(claims.filter(item => item.status === 'fulfilled').length, 1);
-  assert.equal(claims.filter(item => item.status === 'rejected').length, 1);
-  assert.equal(run.status, 'RUNNING');
-  assert.equal(run.recoveryStatus, 'ACTIVE');
-  assert.equal(run.attemptCount, 2);
-});
+}
 
-test('stale active runs are recoverable but uncertain active leases are not', async () => {
-  const expired = {
-    ID: 'run-stale',
-    status: 'RUNNING',
-    recoveryStatus: 'ACTIVE',
-    attemptCount: 1,
-    leaseUntil: '2026-11-03T23:00:00.000Z'
-  };
-  const recovered = await claimMonitoringRecovery(
-    database({ runs: [expired] }),
-    expired.ID,
-    new Date('2026-11-04T00:00:00.000Z')
-  );
-  assert.equal(recovered.attemptCount, 2);
-  assert.equal(expired.status, 'RUNNING');
-  assert.ok(new Date(expired.leaseUntil) > new Date('2026-11-04T00:00:00.000Z'));
-
-  const active = {
-    ID: 'run-active',
-    status: 'RUNNING',
-    recoveryStatus: 'ACTIVE',
-    attemptCount: 1,
-    leaseUntil: '2026-11-04T01:00:00.000Z'
-  };
-  await assert.rejects(claimMonitoringRecovery(
-    database({ runs: [active] }),
-    active.ID,
-    new Date('2026-11-04T00:00:00.000Z')
-  ), error => error.statusCode === 409);
-});
-
-test('recovery cannot exceed the configured maximum attempt count', async () => {
-  const run = {
-    ID: 'run-max',
-    status: 'FAILED',
-    recoveryStatus: 'AVAILABLE',
-    attemptCount: MAX_MONITORING_ATTEMPTS
-  };
-  await assert.rejects(claimMonitoringRecovery(
-    database({ runs: [run] }),
-    run.ID,
-    new Date('2026-11-04T00:00:00.000Z')
-  ), error => error.statusCode === 409);
-});
-
-test('a complete monitoring snapshot resolves acknowledged alerts whose conditions disappeared', async () => {
+async function completeMonitoringResult(result, alerts) {
   const run = {
     ID: 'run-complete',
     status: 'RUNNING',
     recoveryStatus: 'ACTIVE',
     attemptCount: 1
   };
-  const alert = {
-    ID: 'alert-acknowledged',
-    customer_ID: 'C001',
-    conditionKey: 'WARNING',
-    status: 'ACKNOWLEDGED'
-  };
-  const db = completionDatabase({ runs: [run], alerts: [alert] });
+  const db = completionDatabase({ runs: [run], alerts });
   await completeMonitoringRun(db, run.ID, {
-    status: 'COMPLETED',
+    ...result,
     source: 'CAP database',
     retrievedAt: '2026-11-04T00:00:00.000Z',
-    sourceTimestamp: null,
-    freshness: 'UNKNOWN',
     rulesVersion: '1',
-    summary: { customersMonitored: 0 },
-    findings: []
+    summary: { customersMonitored: 1, ...result.summary },
+    findings: result.findings || []
   }, 'monitor', new Date('2026-11-04T00:00:01.000Z'), 1);
-  assert.equal(alert.status, 'RESOLVED');
-  assert.equal(db.tables['credit.MonitoringAlertEvents'][0].eventType, 'RESOLVED');
+  return db;
+}
+
+test('unknown, stale, partial, failed, and empty snapshots preserve active and acknowledged alerts', async () => {
+  const ineligibleResults = [
+    {
+      status: 'COMPLETED',
+      complete: true,
+      freshness: 'UNKNOWN',
+      alertResolutionEligible: false,
+      summary: { customersMonitored: 1 }
+    },
+    {
+      status: 'STALE',
+      complete: true,
+      freshness: 'STALE',
+      alertResolutionEligible: false,
+      summary: { customersMonitored: 1 }
+    },
+    {
+      status: 'PARTIAL',
+      complete: false,
+      freshness: 'FRESH',
+      alertResolutionEligible: false,
+      summary: { customersMonitored: 1 }
+    },
+    {
+      status: 'COMPLETED',
+      complete: true,
+      freshness: 'FRESH',
+      alertResolutionEligible: false,
+      summary: { customersMonitored: 0 }
+    }
+  ];
+
+  for (const result of ineligibleResults) {
+    const active = alertForResolution('active', 'ACTIVE');
+    const acknowledged = alertForResolution('acknowledged', 'ACKNOWLEDGED');
+    const db = await completeMonitoringResult(result, [active, acknowledged]);
+    assert.equal(active.status, 'ACTIVE', `${result.status}/${result.freshness} changed ACTIVE alert`);
+    assert.equal(acknowledged.status, 'ACKNOWLEDGED', `${result.status}/${result.freshness} changed ACKNOWLEDGED alert`);
+    assert.equal(db.tables['credit.MonitoringAlertEvents'].length, 0);
+    assert.equal(JSON.parse(db.tables['credit.MonitoringRuns'][0].summary).alertResolutionEligible, false);
+  }
+});
+
+test('failed retrieval marks its run failed without changing existing alerts', async () => {
+  const run = {
+    ID: 'run-failed',
+    status: 'RUNNING',
+    recoveryStatus: 'ACTIVE',
+    attemptCount: 1
+  };
+  const active = alertForResolution('active', 'ACTIVE');
+  const acknowledged = alertForResolution('acknowledged', 'ACKNOWLEDGED');
+  const db = completionDatabase({ runs: [run], alerts: [active, acknowledged] });
+
+  await failMonitoringRun(
+    db,
+    run.ID,
+    new Error('Source unavailable.'),
+    new Date('2026-11-04T00:00:01.000Z'),
+    1
+  );
+
+  assert.equal(run.status, 'FAILED');
+  assert.equal(active.status, 'ACTIVE');
+  assert.equal(acknowledged.status, 'ACKNOWLEDGED');
+  assert.equal(db.tables['credit.MonitoringAlertEvents'].length, 0);
+});
+
+test('fresh complete non-empty snapshots resolve absent active and acknowledged alert conditions', async () => {
+  const active = alertForResolution('active', 'ACTIVE');
+  const acknowledged = alertForResolution('acknowledged', 'ACKNOWLEDGED');
+  const db = await completeMonitoringResult({
+    status: 'COMPLETED',
+    complete: true,
+    freshness: 'FRESH',
+    alertResolutionEligible: true,
+    summary: { customersMonitored: 2 },
+    findings: []
+  }, [active, acknowledged]);
+
+  assert.equal(active.status, 'RESOLVED');
+  assert.equal(acknowledged.status, 'RESOLVED');
+  const summary = JSON.parse(db.tables['credit.MonitoringRuns'][0].summary);
+  assert.equal(summary.complete, true);
+  assert.equal(summary.alertResolutionEligible, true);
+  assert.equal(db.tables['credit.MonitoringAlertEvents'].length, 2);
+  assert.ok(db.tables['credit.MonitoringAlertEvents'].every(event => event.eventType === 'RESOLVED'));
+});
+
+test('store requires every resolution condition even if eligibility metadata is inconsistent', async () => {
+  const alert = alertForResolution('active', 'ACTIVE');
+  await completeMonitoringResult({
+    status: 'COMPLETED',
+    complete: true,
+    freshness: 'UNKNOWN',
+    alertResolutionEligible: true,
+    summary: { customersMonitored: 2 }
+  }, [alert]);
+  assert.equal(alert.status, 'ACTIVE');
 });

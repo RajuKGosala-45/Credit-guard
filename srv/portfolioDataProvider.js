@@ -36,8 +36,8 @@ function createPortfolioDataProvider({
   });
   return {
     source: provider.source,
-    async listCustomers() {
-      const records = await provider.listCustomers();
+    async listCustomers(options) {
+      const records = await provider.listCustomers(options);
       return provider.source === 'abap' ? records.map(normalizeAbapAnalysis) : records;
     },
     async getCustomer(customerId) {

@@ -16,6 +16,7 @@ const {
   publicRun,
   recoverMonitoringRun
 } = require('./monitoringService');
+const { startMonitoringWorker } = require('./monitoringWorker');
 const {
   getMonitoringAlert,
   getMonitoringRun,
@@ -154,7 +155,7 @@ cds.on('bootstrap', app => {
   app.post('/api/monitoring/runs', requireAnyRole('CreditMonitor', 'CreditAdmin'), async (req, res) => {
     try {
       const run = await executeMonitoringRun({ db: cds.db, user: currentUser(req), runKind: 'MANUAL' });
-      return res.status(run.status === 'RUNNING' ? 202 : 200).json(run);
+      return res.status(202).json(run);
     } catch (error) {
       return res.status(error.statusCode || (error instanceof TypeError ? 400 : 500))
         .json({ error: error.statusCode ? error.message : 'Monitoring could not be started safely.' });
@@ -174,7 +175,7 @@ cds.on('bootstrap', app => {
         runKind: 'SCHEDULED',
         slotKey: `scheduled:${scheduledFor}`
       });
-      return res.status(run.status === 'RUNNING' ? 202 : 200).json(run);
+      return res.status(202).json(run);
     } catch (error) {
       return res.status(error.statusCode || (error instanceof TypeError ? 400 : 500))
         .json({ error: error.statusCode ? error.message : 'Scheduled monitoring could not be started safely.' });
@@ -231,9 +232,6 @@ cds.on('bootstrap', app => {
     try {
       const run = await getMonitoringRun(cds.db, req.params.id);
       if (!run) return res.status(404).json({ error: 'Monitoring run was not found.' });
-      if (!isMonitoringRunOwnerOrOperator(currentUser(req), run)) {
-        return res.status(403).json({ error: 'You are not authorized to view this monitoring run.' });
-      }
       const findings = await listMonitoringFindings(cds.db, run.ID);
       return res.json(publicRun(run, findings.map(publicFinding)));
     } catch {
@@ -245,9 +243,6 @@ cds.on('bootstrap', app => {
     try {
       const run = await getMonitoringRun(cds.db, req.params.id);
       if (!run) return res.status(404).json({ error: 'Monitoring run was not found.' });
-      if (!isMonitoringRunOwnerOrOperator(currentUser(req), run)) {
-        return res.status(403).json({ error: 'You are not authorized to view this monitoring run.' });
-      }
       return res.json((await listMonitoringFindings(cds.db, run.ID)).map(publicFinding));
     } catch {
       return res.status(500).json({ error: 'Monitoring findings are unavailable.' });
@@ -266,7 +261,7 @@ cds.on('bootstrap', app => {
         user: currentUser(req),
         runId: run.ID
       });
-      return res.status(200).json(recovered);
+      return res.status(202).json(recovered);
     } catch (error) {
       return res.status(error.statusCode || 500)
         .json({ error: error.statusCode ? error.message : 'Monitoring recovery could not be completed safely.' });
@@ -604,4 +599,12 @@ cds.on('bootstrap', app => {
       });
     }
   });
+});
+
+let stopMonitoringWorker;
+cds.on('listening', () => {
+  stopMonitoringWorker = startMonitoringWorker(cds.db);
+});
+cds.on('shutdown', async () => {
+  await stopMonitoringWorker?.();
 });

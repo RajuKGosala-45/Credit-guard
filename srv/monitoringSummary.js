@@ -45,7 +45,7 @@ function safeErrorCategory(error) {
     ? category : 'provider_unavailable';
 }
 
-async function generateMonitoringSummary(result, { provider } = {}) {
+async function generateMonitoringSummary(result, { provider, signal } = {}) {
   const signals = safeSignals(result);
   const fallback = deterministicSummary(result.summary, signals.conditionCounts);
   let selectedProvider = provider;
@@ -78,7 +78,8 @@ async function generateMonitoringSummary(result, { provider } = {}) {
         'Clearly distinguish observed facts from advisory investigation suggestions. Keep the answer under 1500 characters.'
       ].join(' '),
       messages: [{ role: 'user', content: JSON.stringify(signals) }],
-      tools: []
+      tools: [],
+      signal
     });
     if (response?.toolCalls?.length || typeof response?.text !== 'string'
       || !response.text.trim() || response.text.length > MAX_ADVISORY_LENGTH) {

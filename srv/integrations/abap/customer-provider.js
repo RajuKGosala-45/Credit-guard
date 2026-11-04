@@ -11,7 +11,7 @@ function createAgentCustomerProvider({
     return {
       source,
       getCustomer: customerId => abapClient.getCreditExposure(customerId),
-      listCustomers: () => abapClient.listCustomerAnalyses()
+      listCustomers: options => abapClient.listCustomerAnalyses(options)
     };
   }
   if (source === 'local') {

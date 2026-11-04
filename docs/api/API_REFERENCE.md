@@ -2,6 +2,8 @@
 
 The browser uses the same-origin JSON endpoints below. All `/api` endpoints require an authenticated CAP identity; role-protected operations also enforce the relevant server-derived role. JSON responses use UTF-8. Errors generally use `{ "error": "..." }`.
 
+Browser state-changing requests go through the shared frontend API helper. With App Router CSRF protection enabled, the helper first sends an authenticated same-origin `GET /credit/index.html` carrying `X-CSRF-Token: Fetch`, reads the returned token, and uses the browser-managed same-origin session cookie. It caches the token in memory for the page session and attaches `X-CSRF-Token` to POST, PUT, PATCH, and DELETE requests. Reads do not fetch a token. If a write is rejected, the cached token is invalidated for the next user-initiated operation; the rejected write is never retried automatically.
+
 ## Health
 
 | Method | Path | Access | Purpose |
@@ -28,19 +30,21 @@ In local profiles these endpoints use the CAP database. When `CREDIT_GUARD_AGENT
 | GET | `/api/monitoring/summary` | `CreditReader` | Latest run and findings, last successful completion, and active/acknowledged alert counts. |
 | GET | `/api/monitoring/runs[?limit=N]` | `CreditReader` | Bounded run history. |
 | GET | `/api/monitoring/runs/latest` | `CreditReader` | Latest run, or 404 if no run exists. |
-| GET | `/api/monitoring/runs/:id` | `CreditReader`, owner or operator | One run and its findings. Scheduled runs are portfolio-wide. |
-| GET | `/api/monitoring/runs/:id/findings` | `CreditReader`, owner or operator | Findings for a run. |
-| POST | `/api/monitoring/runs` | `CreditMonitor` or `CreditAdmin` | Start an on-demand read-only monitoring run. |
-| POST | `/api/monitoring/jobs/run` | `CreditMonitorJob` | Scheduler trigger; accepts only a canonical `scheduledFor` ISO timestamp. The slot is idempotent. |
-| POST | `/api/monitoring/runs/:id/recover` | `CreditMonitor` or `CreditAdmin`, owner or operator | Claim and resume an eligible failed/stale run within the attempt bound. |
+| GET | `/api/monitoring/runs/:id` | `CreditReader` | One portfolio run and its findings, regardless of initiator. |
+| GET | `/api/monitoring/runs/:id/findings` | `CreditReader` | Findings for any portfolio run. |
+| POST | `/api/monitoring/runs` | `CreditMonitor` or `CreditAdmin` | Enqueue an on-demand read-only run; returns `202 Accepted` with the run ID and current status. |
+| POST | `/api/monitoring/jobs/run` | `CreditMonitorJob` | Enqueue a scheduled run; accepts only a canonical `scheduledFor` ISO timestamp, and the slot is idempotent. Returns `202 Accepted`. |
+| POST | `/api/monitoring/runs/:id/recover` | `CreditMonitor` or `CreditAdmin` | Queue an eligible failed/stale run for bounded recovery; returns `202 Accepted`. |
 | GET | `/api/monitoring/alerts[?status=ACTIVE]` | `CreditReader` | List portfolio alerts (`ACTIVE` includes acknowledged alerts; filters also accept `ACKNOWLEDGED`, `RESOLVED`, `ALL`). |
 | GET | `/api/monitoring/alerts/:id` | `CreditReader` | Read alert state and lifecycle events. |
 | POST | `/api/monitoring/alerts/:id/acknowledge` | `CreditMonitor` or `CreditAdmin` | Acknowledge an alert. |
 | POST | `/api/monitoring/alerts/:id/resolve` | `CreditMonitor` or `CreditAdmin` | Manually resolve an alert. |
 
-Monitoring statuses include `COMPLETED`, `PARTIAL`, `STALE`, and `FAILED`. Freshness is `UNKNOWN` unless the upstream source supplies a data timestamp; retrieval time alone is not represented as source-data freshness. Findings use the existing deterministic credit rules. Optional AI text is an aggregate-only advisory and is not a decision or a new risk score.
+Monitoring statuses include `QUEUED`, `RUNNING`, `COMPLETED`, `PARTIAL`, `STALE`, and `FAILED`. Poll `GET /api/monitoring/runs/:id` for status and terminal results. The durable worker claims persisted jobs with a database lease; a portfolio-wide lock prevents overlapping scans. Freshness is `UNKNOWN` unless the upstream source supplies a data timestamp; retrieval time alone is not represented as source-data freshness. Findings use the existing deterministic credit rules. Optional AI text is an aggregate-only advisory and is not a decision or a new risk score.
 
-Manual run history and findings are owner-scoped to the initiating user or visible to monitoring operators; scheduled runs are shared portfolio records. Alerts are portfolio-wide for authenticated readers. All monitoring actions are read-only with respect to customer credit limits and limit requests. The scheduler binding does not provision the recurring Job Scheduler job, interval, OAuth configuration, or service-role assignment; those remain deployment tasks. No external email/SMS/push provider is configured.
+Automatic alert resolution requires a `COMPLETED`, complete, non-empty snapshot with verified `FRESH` source data. Unknown or stale freshness, partial or failed runs, and empty portfolios preserve active and acknowledged alerts. Monitoring operators can still resolve alerts manually.
+
+All authenticated `CreditReader` users can view portfolio-wide monitoring summaries, history, latest runs, run details, findings and alerts, regardless of who initiated a run. Public run responses omit the initiating user identity. `CreditMonitor` and `CreditAdmin` can execute manual runs, recover eligible runs, acknowledge alerts and manually resolve alerts. Only the `CreditMonitorJob` service role can trigger scheduled execution. Monitoring is read-only with respect to customer credit limits and limit requests. The scheduler binding does not provision the recurring Job Scheduler job, interval, OAuth configuration, or service-role assignment; those remain deployment tasks. No external email/SMS/push provider is configured.
 
 ## Limit requests
 

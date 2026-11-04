@@ -113,7 +113,9 @@ test('production startup requires bound HANA, XSUAA, Destination service, and AB
 test('App Router protects application routes and exposes only health routes anonymously', () => {
   const routerPackage = JSON.parse(readFileSync(path.join(root, 'approuter', 'package.json'), 'utf8'));
   assert.equal(routerPackage.dependencies['@sap/approuter'], '^23.4.0');
-  assert.equal(routerPackage.engines.node, '^22.0.0 || ^24.0.0');
+  assert.equal(routerPackage.engines.node, '^22.0.0');
+  const routerLock = JSON.parse(readFileSync(path.join(root, 'approuter', 'package-lock.json'), 'utf8'));
+  assert.equal(routerLock.packages[''].engines.node, routerPackage.engines.node);
   const appRouter = JSON.parse(readFileSync(path.join(root, 'approuter', 'xs-app.json'), 'utf8'));
   assert.equal(appRouter.logout.logoutEndpoint, '/logout');
   assert.equal(appRouter.logout.logoutPage, '/');
@@ -139,7 +141,11 @@ test('App Router protects application routes and exposes only health routes anon
   assert.equal(server.parameters['health-check-http-endpoint'], '/health/ready');
   assert.equal(server.properties.ABAP_DESTINATION_NAME, 'CREDIT_GUARD_ABAP');
   assert.equal(server.properties.CREDIT_GUARD_AGENT_DATA_SOURCE, 'abap');
+  assert.equal(server.properties.MONITORING_WORKER_DRAIN_TIMEOUT_MS, '8000');
   const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  assert.equal(packageJson.engines.node, routerPackage.engines.node);
+  const packageLock = JSON.parse(readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
+  assert.equal(packageLock.packages[''].engines.node, packageJson.engines.node);
   assert.match(packageJson.scripts['build:cf'], /contentHdbtabledata=false/);
   assert.match(packageJson.scripts['build:cf'], /cpSync\('app\/credit','gen\/srv\/app\/credit'/);
 });

@@ -276,12 +276,24 @@ class AbapClient {
     return destination;
   }
 
-  async request(destination, config, operation) {
+  async request(destination, config, operation, { signal, deadlineAt } = {}) {
+    if (signal?.aborted) throw signal.reason || new AbapIntegrationError('ABAP request was cancelled.', {
+      category: 'abap_cancelled',
+      statusCode: 503
+    });
+    const remainingMs = deadlineAt === undefined ? this.timeoutMs : deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      throw new AbapIntegrationError('The monitoring execution deadline expired.', {
+        category: 'monitoring_deadline_exceeded',
+        statusCode: 504
+      });
+    }
     const startedAt = Date.now();
     try {
       const response = await this.httpRequest(destination, {
         method: 'get',
-        timeout: this.timeoutMs,
+        timeout: Math.min(this.timeoutMs, remainingMs),
+        signal,
         headers: { accept: 'application/json' },
         ...config
       });
@@ -313,13 +325,23 @@ class AbapClient {
     });
   }
 
-  async readCollection(path, params, operation) {
+  async readCollection(path, params, operation, { signal, deadlineAt } = {}) {
     const destination = await this.resolveDestination();
     const rows = [];
     let nextLink;
     let config = { url: path, params };
     for (let page = 0; page < this.maxPages; page += 1) {
-      const data = await this.request(destination, config, operation);
+      if (signal?.aborted) throw signal.reason || new AbapIntegrationError('ABAP request was cancelled.', {
+        category: 'abap_cancelled',
+        statusCode: 503
+      });
+      if (deadlineAt !== undefined && deadlineAt - Date.now() <= 0) {
+        throw new AbapIntegrationError('The monitoring execution deadline expired.', {
+          category: 'monitoring_deadline_exceeded',
+          statusCode: 504
+        });
+      }
+      const data = await this.request(destination, config, operation, { signal, deadlineAt });
       const result = normalizeCollection(data);
       rows.push(...result.rows);
       nextLink = result.nextLink;
@@ -359,11 +381,12 @@ class AbapClient {
     return normalizeCustomer(matching[0]);
   }
 
-  async listCustomers() {
+  async listCustomers(options = {}) {
     const rows = await this.readCollection(
       this.customersPath,
       { '$top': this.pageSize },
-      'list_customers'
+      'list_customers',
+      options
     );
     const customers = rows.map(normalizeCustomer);
     const ids = new Set();
@@ -430,12 +453,14 @@ class AbapClient {
     };
   }
 
-  async listCustomerAnalyses() {
-    const customers = await this.listCustomers();
+  async listCustomerAnalyses(options = {}) {
+    const { signal, deadlineAt } = options;
+    const customers = await this.listCustomers(options);
     const rows = await this.readCollection(
       this.openItemsPath,
       { '$top': this.pageSize },
-      'list_open_items'
+      'list_open_items',
+      { signal, deadlineAt }
     );
     const openItems = rows.map(record => {
       const customerId = validateCustomerId(requiredString(record?.CustomerId, 'CustomerId', 'open-item'));
