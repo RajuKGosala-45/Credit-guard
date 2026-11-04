@@ -73,6 +73,14 @@ entity AgentExecutions {
       errorCategory  : String(40);
       providerFallback: Boolean not null default false;
       providerErrorCategory: String(40);
+      planId         : String(64);
+      planVersion    : Integer;
+      planStatus     : String(24);
+      planData       : LargeString;
+      taskResults    : LargeString;
+      recoveryData   : LargeString;
+      recoveryStatus : String(24);
+      updatedAt      : Timestamp;
 }
 
 entity AgentExecutionSteps {
@@ -84,4 +92,8 @@ entity AgentExecutionSteps {
       summary       : String(500);
       startedAt     : Timestamp not null;
       completedAt   : Timestamp;
+      taskId        : String(64);
+      attempt       : Integer;
+      outcome       : String(24);
+      errorCategory : String(40);
 }

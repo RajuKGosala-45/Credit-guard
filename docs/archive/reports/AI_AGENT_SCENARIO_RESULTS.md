@@ -27,4 +27,4 @@ These are synthetic test values and not SAP data. `riskClass: C` is the fixture 
 npm.cmd test
 ```
 
-The six portfolio scenarios are in [tests/milestone3-readiness.test.js](./tests/milestone3-readiness.test.js); ABAP connector and source-contract tests are in [tests/abap.integration.test.js](./tests/abap.integration.test.js) and `tests/abap.contract.test.js`. The latest complete run passed **65 tests, 0 failed, 1 opt-in live test skipped**.
+The six portfolio scenarios are in [tests/milestone3-readiness.test.js](../../../tests/milestone3-readiness.test.js); ABAP connector and source-contract tests are in [tests/abap.integration.test.js](../../../tests/abap.integration.test.js) and `tests/abap.contract.test.js`. The latest complete run passed **65 tests, 0 failed, 1 opt-in live test skipped**.

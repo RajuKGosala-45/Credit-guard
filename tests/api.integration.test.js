@@ -334,11 +334,12 @@ test('chat API returns an offline assistant contract and validates empty message
   const chat = await postJson('/api/chat', { message: 'Explain C001' });
   assert.equal(chat.response.status, 200);
   assert.deepEqual(Object.keys(chat.body).sort(), [
-    'conversationId', 'execution', 'memoryEnabled', 'offline', 'preparedActions', 'reply'
+    'conversationId', 'execution', 'executionSummary', 'memoryEnabled', 'offline', 'preparedActions', 'reply'
   ]);
   assert.equal(chat.body.offline, true);
   assert.equal(chat.body.memoryEnabled, true);
   assert.equal(chat.body.execution.status, 'completed');
+  assert.equal(chat.body.executionSummary.executionId, chat.body.execution.ID);
   assert.ok(chat.body.execution.steps.some(step => step.tool === 'get_customer'));
   assert.match(chat.body.reply, /Aarav Components/);
   assert.match(chat.body.reply, /Offline demo mode/);
@@ -370,6 +371,21 @@ test('conversation history and execution logs are isolated by authenticated user
   assert.ok(ownerHistory.body.executions.some(item => item.ID === firstTurn.body.execution.ID));
   assert.ok(ownerHistory.body.conversations.some(item => item.ID === conversationId));
 
+  const executionId = firstTurn.body.execution.ID;
+  const execution = await request(`/api/agent/executions/${executionId}`, { identity: 'requester' });
+  assert.equal(execution.response.status, 200);
+  assert.equal(execution.body.ID, executionId);
+  assert.equal(Object.hasOwn(execution.body, 'recoveryData'), false);
+  assert.equal(Object.hasOwn(execution.body, 'planData'), false);
+
+  const anotherUsersExecution = await request(`/api/agent/executions/${executionId}`, { identity: 'reader' });
+  assert.equal(anotherUsersExecution.response.status, 404);
+  const unavailableRecovery = await request(`/api/agent/executions/${executionId}/recover`, {
+    method: 'POST',
+    identity: 'requester'
+  });
+  assert.equal(unavailableRecovery.response.status, 409);
+
   const cleared = await request(`/api/agent/conversations/${conversationId}`, {
     method: 'DELETE',
     identity: 'requester'
@@ -392,6 +408,7 @@ test('document analysis API accepts UTF-8 text and rejects unsupported extension
   assert.equal(analyzed.body.truncated, false);
   assert.equal(analyzed.body.offline, true);
   assert.equal(typeof analyzed.body.reply, 'string');
+  assert.equal(analyzed.body.executionSummary.planStatus, null);
 
   const unsupportedForm = new FormData();
   unsupportedForm.append('document', new Blob(['This file is unsupported.']), 'review.exe');

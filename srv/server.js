@@ -6,13 +6,17 @@ const multer = require('multer');
 const { validateProductionBindings } = require('./deployment');
 const creditService = require('./creditService');
 const { validateActorId } = require('./limitRequests');
-const { chat } = require('./agent');
+const { chat, toolDefinitions } = require('./agent');
+const { PLAN_VERSION, validatePlan } = require('./agentPlan');
 const { extractDocument, MAX_EXTRACTED_CHARACTERS } = require('./documents');
 const {
   MEMORY_ENABLED,
   clearAgentHistory,
   clearConversations,
+  claimExecutionRecovery,
   getOrCreateConversation,
+  getExecution,
+  getExecutionForRecovery,
   listConversations,
   listExecutions,
   loadConversationMessages,
@@ -28,7 +32,6 @@ validateProductionBindings({
   authKind: cds.env.requires.auth?.kind
 });
 
-const number = value => Number(value || 0);
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const documentUpload = multer({
   storage: multer.memoryStorage(),
@@ -178,12 +181,14 @@ cds.on('bootstrap', app => {
       startedAt = new Date().toISOString();
       const result = await chat(message, cds.db, documentContext, currentUser(req), {
         conversationId,
-        history
+        history,
+        executionStore: {
+          persist: execution => recordExecution(cds.db, userId, conversationId, execution)
+        }
       });
       if (MEMORY_ENABLED && !documentContext) {
         await saveConversationTurn(cds.db, conversationId, userId, message, result.reply);
       }
-      result.execution = await recordExecution(cds.db, userId, conversationId, result.execution);
       return res.json({ ...result, conversationId, memoryEnabled: MEMORY_ENABLED });
     } catch (error) {
       const execution = error.execution || {
@@ -193,11 +198,23 @@ cds.on('bootstrap', app => {
         errorCategory: error.category || 'agent_error',
         steps: []
       };
-      if (userId) {
-        error.execution = await recordExecution(cds.db, userId, conversationId, execution);
-      }
-      return res.status(error.statusCode || (error instanceof TypeError ? 400 : error.category === 'execution_timeout' ? 504 : 502))
-        .json({ error: error.message, execution: error.execution || execution, conversationId: conversationId || null });
+      const status = error.statusCode || (error instanceof TypeError ? 400 : error.category === 'execution_timeout' ? 504 : 502);
+      const publicMessage = status === 400
+        ? 'The request could not be validated.'
+        : status === 403
+          ? 'You are not authorized to perform this operation.'
+          : status === 504
+            ? 'The agent execution timed out.'
+            : 'The agent execution could not be completed safely.';
+      return res.status(status)
+        .json({
+          error: publicMessage,
+          execution: error.execution || execution,
+          ...(error.execution?.executionSummary
+            ? { executionSummary: error.execution.executionSummary }
+            : {}),
+          conversationId: conversationId || null
+        });
     }
   });
 
@@ -252,6 +269,71 @@ cds.on('bootstrap', app => {
     }
   });
 
+  app.get('/api/agent/executions/:id', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const userId = validateActorId(currentUser(req).id);
+      return res.json(await getExecution(cds.db, userId, req.params.id));
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/agent/executions/:id/recover', requireRole('CreditReader'), async (req, res) => {
+    const user = currentUser(req);
+    let userId;
+    try {
+      userId = validateActorId(user.id);
+      const candidate = await getExecutionForRecovery(cds.db, userId, req.params.id);
+      if (!candidate.plan || candidate.plan.version !== PLAN_VERSION) {
+        const error = new Error('Execution plan is unavailable or incompatible with this version.');
+        error.statusCode = 409;
+        throw error;
+      }
+      validatePlan(candidate.plan, { toolDefinitions });
+      if (!['IN_PROGRESS', 'PARTIALLY_COMPLETED', 'BLOCKED', 'FAILED'].includes(candidate.plan.status)
+        || candidate.plan.tasks.some(task => task.status === 'RUNNING')) {
+        const error = new Error('Execution plan is not eligible for automatic recovery.');
+        error.statusCode = 409;
+        throw error;
+      }
+      const saved = await claimExecutionRecovery(cds.db, userId, req.params.id);
+      const result = await chat('Resume the saved execution.', cds.db, undefined, user, {
+        conversationId: saved.conversation_ID,
+        executionId: saved.ID,
+        resumePlan: saved.plan,
+        recoveryData: saved.recoveryData,
+        taskResults: saved.taskResults,
+        executionStore: {
+          persist: execution => recordExecution(
+            cds.db,
+            userId,
+            saved.conversation_ID,
+            execution
+          )
+        }
+      });
+      return res.json(result);
+    } catch (error) {
+      if (userId && error.execution) {
+        try {
+          error.execution = await recordExecution(
+            cds.db,
+            userId,
+            error.execution.conversationId || null,
+            error.execution
+          );
+        } catch {
+          error.persistenceFailed = true;
+        }
+      }
+      return res.status(error.statusCode || (error.category === 'execution_timeout' ? 504 : 502))
+        .json({
+          error: error.statusCode ? error.message : 'Execution recovery could not be completed safely.',
+          ...(error.execution ? { execution: error.execution } : {})
+        });
+    }
+  });
+
   app.post('/api/documents/analyze', requireRole('CreditReader'), parseDocumentUpload, async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Choose a PDF, DOCX, or TXT document to upload.' });
@@ -268,10 +350,35 @@ cds.on('bootstrap', app => {
         extractedCharacters: extracted.extractedCharacters,
         truncated: extracted.truncated
       };
-      const result = await chat('Read this document and summarize its credit-related facts, customer references, risks, and useful next steps.', cds.db, documentContext, currentUser(req));
-      return res.json({ ...documentContext, reply: result.reply, offline: result.offline });
+      const userId = validateActorId(currentUser(req).id);
+      const result = await chat(
+        'Read this document and summarize its credit-related facts, customer references, risks, and useful next steps.',
+        cds.db,
+        documentContext,
+        currentUser(req),
+        {
+          executionStore: {
+            persist: execution => recordExecution(cds.db, userId, null, execution)
+          }
+        }
+      );
+      return res.json({
+        ...documentContext,
+        reply: result.reply,
+        offline: result.offline,
+        plan: result.plan || null,
+        taskResults: result.taskResults || [],
+        executionSummary: result.executionSummary
+      });
     } catch (error) {
-      return res.status(502).json({ error: error.message });
+      return res.status(error.category === 'execution_timeout' ? 504 : 502).json({
+        error: error.category === 'execution_timeout'
+          ? 'The document analysis timed out.'
+          : 'The document analysis could not be completed safely.',
+        ...(error.execution?.executionSummary
+          ? { executionSummary: error.execution.executionSummary }
+          : {})
+      });
     }
   });
 });

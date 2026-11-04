@@ -4,6 +4,7 @@ const { SELECT, INSERT, UPDATE, DELETE } = cds.ql;
 
 const MEMORY_ENABLED = process.env.AGENT_MEMORY_ENABLED === 'true';
 const MAX_CONVERSATION_MESSAGES = 12;
+const RECOVERY_STALE_MS = 60000;
 
 function validateConversationId(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -14,6 +15,23 @@ function validateConversationId(value) {
     throw error;
   }
   return value;
+}
+
+function storagePlan(plan) {
+  if (!plan) return null;
+  return {
+    ...plan,
+    tasks: plan.tasks.map(task => task.taskType === 'PROPOSAL'
+      ? {
+        ...task,
+        toolInput: {
+          customer_id: 'REDACTED',
+          new_limit: 1,
+          reason: 'REDACTED'
+        }
+      }
+      : task)
+  };
 }
 
 async function getOrCreateConversation(db, ownerId, requestedId) {
@@ -123,35 +141,89 @@ async function clearConversations(db, ownerId, conversationId) {
 }
 
 async function recordExecution(db, userId, conversationId, execution) {
-  const executionId = randomUUID();
+  const executionId = execution.id || execution.ID || randomUUID();
   const steps = execution.steps || [];
+  const plan = execution.recoveryPlan || execution.plan || null;
+  const incompleteTasks = plan?.tasks?.filter(task =>
+    ['PENDING', 'READY'].includes(task.status)) || [];
+  const hasSafeRecovery = ['completed', 'failed'].includes(execution.status)
+    && ['IN_PROGRESS', 'PARTIALLY_COMPLETED', 'BLOCKED', 'FAILED'].includes(plan?.status)
+    && incompleteTasks.some(task => task.taskType === 'READ_ONLY')
+    && !plan.tasks.some(task => task.status === 'RUNNING');
   await db.tx(async tx => {
-    await tx.run(INSERT.into('credit.AgentExecutions').entries({
-      ID: executionId,
+    const existing = (await tx.run(SELECT.from('credit.AgentExecutions')
+      .where({ ID: executionId, user_ID: userId })))[0];
+    const progress = {
       user_ID: userId,
       conversation_ID: conversationId || null,
       status: execution.status,
       stepCount: steps.length,
       startedAt: execution.startedAt,
-      completedAt: execution.completedAt,
+      completedAt: execution.completedAt || null,
       errorCategory: execution.errorCategory || null,
       providerFallback: execution.providerFallback === true,
-      providerErrorCategory: execution.providerErrorCategory || null
-    }));
-    if (steps.length) {
-      await tx.run(INSERT.into('credit.AgentExecutionSteps').entries(steps.map((step, index) => ({
-        ID: randomUUID(),
-        execution_ID: executionId,
-        sequence: index + 1,
+      providerErrorCategory: execution.providerErrorCategory || null,
+      planId: plan?.planId || null,
+      planVersion: plan?.version || null,
+      planStatus: execution.planStatus || plan?.status || null,
+      planData: plan ? JSON.stringify(storagePlan(plan)) : null,
+      taskResults: Array.isArray(execution.taskResults) ? JSON.stringify(execution.taskResults) : null,
+      recoveryData: execution.recoveryData ? JSON.stringify(execution.recoveryData) : null,
+      recoveryStatus: execution.status === 'running'
+        ? 'ACTIVE'
+        : execution.recoveryStatus === 'MANUAL_REVIEW' ? 'MANUAL_REVIEW'
+          : hasSafeRecovery ? 'AVAILABLE' : 'NOT_AVAILABLE',
+      updatedAt: new Date().toISOString()
+    };
+    if (existing) {
+      await tx.run(UPDATE('credit.AgentExecutions')
+        .set(progress)
+        .where({ ID: executionId, user_ID: userId }));
+    } else {
+      await tx.run(INSERT.into('credit.AgentExecutions').entries({
+        ID: executionId,
+        ...progress
+      }));
+    }
+
+    const storedSteps = await tx.run(SELECT.from('credit.AgentExecutionSteps')
+      .where({ execution_ID: executionId }));
+    for (const [index, step] of steps.entries()) {
+      const sequence = index + 1;
+      const values = {
         toolName: step.tool,
         status: step.status,
-        summary: step.summary.slice(0, 500),
+        summary: String(step.summary || '').slice(0, 500),
         startedAt: step.startedAt,
-        completedAt: step.completedAt
-      }))));
+        completedAt: step.completedAt || null,
+        taskId: step.taskId || null,
+        attempt: Number.isSafeInteger(step.attempt) ? step.attempt : null,
+        outcome: step.outcome || step.status,
+        errorCategory: step.errorCategory || null
+      };
+      if (storedSteps.some(stored => stored.sequence === sequence)) {
+        await tx.run(UPDATE('credit.AgentExecutionSteps')
+          .set(values)
+          .where({ execution_ID: executionId, sequence }));
+      } else {
+        await tx.run(INSERT.into('credit.AgentExecutionSteps').entries({
+          ID: randomUUID(),
+          execution_ID: executionId,
+          sequence,
+          ...values
+        }));
+      }
     }
   });
-  return { ...execution, ID: executionId };
+  return {
+    ...execution,
+    id: executionId,
+    ID: executionId,
+    recoveryStatus: execution.status === 'running'
+      ? 'ACTIVE'
+      : execution.recoveryStatus === 'MANUAL_REVIEW' ? 'MANUAL_REVIEW'
+        : hasSafeRecovery ? 'AVAILABLE' : 'NOT_AVAILABLE'
+  };
 }
 
 async function listExecutions(db, userId) {
@@ -161,9 +233,140 @@ async function listExecutions(db, userId) {
   for (const execution of executions) {
     const steps = await db.run(SELECT.from('credit.AgentExecutionSteps')
       .where({ execution_ID: execution.ID }).orderBy('sequence asc'));
-    results.push({ ...execution, steps });
+    const {
+      planData,
+      taskResults: taskResultsData,
+      recoveryData: recoveryDataValue,
+      ...safeExecution
+    } = execution;
+    results.push({
+      ...safeExecution,
+      plan: safePlanFromStorage(planData),
+      taskResults: parseStoredJson(taskResultsData, []),
+      steps
+    });
   }
   return results;
+}
+
+function parseStoredJson(value, fallback = null) {
+  if (typeof value !== 'string') return fallback;
+  try { return JSON.parse(value); }
+  catch { return fallback; }
+}
+
+function safePlanFromStorage(value) {
+  const plan = parseStoredJson(value);
+  if (!plan || !Array.isArray(plan.tasks)) return null;
+  return {
+    ...plan,
+    tasks: plan.tasks.map(({ toolInput, ...task }) => task)
+  };
+}
+
+async function getExecutionForRecovery(db, userId, executionId) {
+  const execution = (await db.run(SELECT.from('credit.AgentExecutions')
+    .where({ ID: executionId, user_ID: userId })))[0];
+  if (!execution) {
+    const error = new Error('Execution was not found or is unavailable.');
+    error.statusCode = 404;
+    throw error;
+  }
+  return {
+    ...execution,
+    plan: parseStoredJson(execution.planData),
+    taskResults: parseStoredJson(execution.taskResults, []),
+    recoveryData: parseStoredJson(execution.recoveryData, {})
+  };
+}
+
+async function claimExecutionRecovery(db, userId, executionId, now = new Date()) {
+  const execution = await getExecutionForRecovery(db, userId, executionId);
+  if (execution.recoveryStatus === 'ACTIVE' || execution.recoveryStatus === 'RECOVERING') {
+    const updatedAt = new Date(execution.updatedAt || execution.startedAt).getTime();
+    if (!Number.isFinite(updatedAt) || now.getTime() - updatedAt <= RECOVERY_STALE_MS) {
+      const error = new Error('Execution is still active and cannot be recovered yet.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const runningTask = execution.plan?.tasks?.some(task => task.status === 'RUNNING');
+    const previousStatus = execution.recoveryStatus;
+    const nextStatus = runningTask ? 'MANUAL_REVIEW' : 'RECOVERING';
+    const completedTasks = execution.plan?.tasks?.filter(task =>
+      task.status === 'COMPLETED').length || 0;
+    const planStatus = completedTasks
+      ? 'PARTIALLY_COMPLETED'
+      : execution.plan?.tasks?.some(task => task.status === 'BLOCKED') ? 'BLOCKED' : 'FAILED';
+    const changed = await db.run(UPDATE('credit.AgentExecutions')
+      .set({
+        recoveryStatus: nextStatus,
+        ...(runningTask ? { planStatus } : {}),
+        ...(runningTask && execution.plan
+          ? { planData: JSON.stringify({ ...execution.plan, status: planStatus }) }
+          : {}),
+        updatedAt: now.toISOString()
+      })
+      .where({
+        ID: executionId,
+        user_ID: userId,
+        recoveryStatus: previousStatus,
+        updatedAt: execution.updatedAt
+      }));
+    if (changed !== 1) {
+      const error = new Error('Execution recovery is already in progress.');
+      error.statusCode = 409;
+      throw error;
+    }
+    if (runningTask) {
+      const error = new Error('A task has an uncertain prior outcome and requires manual review.');
+      error.statusCode = 409;
+      throw error;
+    }
+    execution.recoveryStatus = 'RECOVERING';
+    return execution;
+  }
+  if (execution.recoveryStatus !== 'AVAILABLE') {
+    const error = new Error('Execution is not available for automatic recovery.');
+    error.statusCode = 409;
+    throw error;
+  }
+  const changed = await db.run(UPDATE('credit.AgentExecutions')
+    .set({ recoveryStatus: 'RECOVERING', updatedAt: now.toISOString() })
+    .where({
+      ID: executionId,
+      user_ID: userId,
+      recoveryStatus: 'AVAILABLE'
+    }));
+  if (changed !== 1) {
+    const error = new Error('Execution recovery is already in progress.');
+    error.statusCode = 409;
+    throw error;
+  }
+  return execution;
+}
+
+async function getExecution(db, userId, executionId) {
+  const execution = (await db.run(SELECT.from('credit.AgentExecutions')
+    .where({ ID: executionId, user_ID: userId })))[0];
+  if (!execution) {
+    const error = new Error('Execution was not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  const steps = await db.run(SELECT.from('credit.AgentExecutionSteps')
+    .where({ execution_ID: executionId }).orderBy('sequence asc'));
+  const {
+    planData,
+    taskResults: taskResultsData,
+    recoveryData: recoveryDataValue,
+    ...safeExecution
+  } = execution;
+  return {
+    ...safeExecution,
+    plan: safePlanFromStorage(planData),
+    taskResults: parseStoredJson(taskResultsData, []),
+    steps
+  };
 }
 
 async function clearAgentHistory(db, ownerId) {
@@ -192,12 +395,16 @@ module.exports = {
   MEMORY_ENABLED,
   clearAgentHistory,
   clearConversations,
+  claimExecutionRecovery,
+  getExecution,
+  getExecutionForRecovery,
   getOrCreateConversation,
   listConversations,
   listExecutions,
   loadConversationMessages,
   readConversation,
   recordExecution,
+  RECOVERY_STALE_MS,
   saveConversationTurn,
   validateConversationId
 };

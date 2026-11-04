@@ -77,7 +77,26 @@ function providerWithTool(name, input, answer, onRequest = () => {}) {
       onRequest(request);
       if (firstCall) {
         firstCall = false;
-        const toolCall = { id: 'scenario-call', name, input };
+        const proposal = name === 'prepare_limit_change';
+        const toolCall = {
+          id: 'scenario-call',
+          name: 'create_task_plan',
+          input: {
+            objective: 'Complete the requested Credit Guard analysis.',
+            tasks: [{
+              taskId: 'scenario-task',
+              description: 'Run the registered Credit Guard operation.',
+              toolName: name,
+              toolInput: input,
+              dependencies: [],
+              taskType: proposal ? 'PROPOSAL' : 'READ_ONLY',
+              completionCriteria: {
+                description: 'Return the registered tool result.',
+                requiredFields: proposal ? ['requiresHumanApproval', 'proposal'] : ['ID']
+              }
+            }]
+          }
+        };
         return {
           content: [{ type: 'tool_use', ...toolCall }],
           toolCalls: [toolCall],
@@ -95,9 +114,11 @@ function providerWithTool(name, input, answer, onRequest = () => {}) {
 
 function lastToolResult(messages) {
   const message = messages.findLast(entry =>
-    entry.role === 'user' && Array.isArray(entry.content));
+    entry.role === 'user' && typeof entry.content === 'string'
+      && entry.content.includes('The validated plan execution has finished.'));
   assert.ok(message, 'Expected the agent to provide the tool result to the provider.');
-  return JSON.parse(message.content[0].content);
+  const execution = JSON.parse(message.content.slice(message.content.indexOf('\n') + 1));
+  return execution.results[0].result;
 }
 
 test('scenario 1: customer analysis uses the calculated customer tool and records execution', async () => {
@@ -153,7 +174,7 @@ test('scenario 4: explanation is grounded in the customer exposure tool result',
 test('scenario 5: limit increase proposal is validated without creating a request', async () => {
   const db = mockDatabase();
   let lastRequest;
-  const result = await chat('Prepare an increase proposal for C002', db, undefined, requester, {
+  const result = await chat('Prepare an increase proposal for C002 to 1200 because Confirmed contract renewal', db, undefined, requester, {
     provider: providerWithTool('prepare_limit_change', {
       customer_id: 'C002',
       new_limit: 1200,
@@ -176,7 +197,7 @@ test('scenario 6: submission requires a separate human action; agent exposes no 
   const db = mockDatabase();
   const tools = createToolRegistry(db, requester);
   let lastRequest;
-  const result = await chat('Prepare a credit increase for C002', db, undefined, requester, {
+  const result = await chat('Prepare a credit increase for C002 to 1200 because Confirmed contract renewal', db, undefined, requester, {
     provider: providerWithTool('prepare_limit_change', {
       customer_id: 'C002',
       new_limit: 1200,

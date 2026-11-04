@@ -102,7 +102,7 @@ These steps are for an authorized developer in an isolated ABAP Environment tena
 8. Grant the Cloud Foundry application access to the Destination service, deploy only to a non-production space, and verify a read-only request with the approved identity. Confirm that credentials and authorization headers never appear in application logs.
 9. Run connector fixtures against masked tenant samples, test missing/extra fields, no-match, pagination, timeout and 401/403 cases, and reconcile calculations with a business-approved report before any demonstration.
 
-Usable copy/paste ABAP Cloud source, synthetic CSV test rows, exact object dependency order, ADT creation/activation steps, communication setup, endpoint configuration, and an opt-in non-production GET smoke test are now in [`abap/adt/README.md`](./abap/adt/README.md). The source is intentionally custom `Z*` content; no standard SAP object or API is assumed. The local contract checks and the live smoke test are `tests/abap.contract.test.js` and `tests/abap.live.integration.test.js` respectively.
+Usable copy/paste ABAP Cloud source, synthetic CSV test rows, exact object dependency order, ADT creation/activation steps, communication setup, endpoint configuration, and an opt-in non-production GET smoke test are now in [`abap/adt/README.md`](../../../abap/adt/README.md). The source is intentionally custom `Z*` content; no standard SAP object or API is assumed. The local contract checks and the live smoke test are `tests/abap.contract.test.js` and `tests/abap.live.integration.test.js` respectively.
 
 ## Current application setup and boundaries
 
