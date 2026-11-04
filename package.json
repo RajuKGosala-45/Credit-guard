@@ -92,6 +92,18 @@
                 "FinanceHead",
                 "CreditAdmin"
               ]
+            },
+            "monitor": {
+              "roles": [
+                "CreditReader",
+                "CreditMonitor"
+              ]
+            },
+            "jobScheduler": {
+              "roles": [
+                "CreditReader",
+                "CreditMonitorJob"
+              ]
             }
           }
         },

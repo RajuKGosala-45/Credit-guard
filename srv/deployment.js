@@ -1,4 +1,4 @@
-const REQUIRED_PRODUCTION_BINDINGS = ['hana', 'xsuaa', 'destination'];
+const REQUIRED_PRODUCTION_BINDINGS = ['hana', 'xsuaa', 'destination', 'jobscheduler'];
 
 function isProductionProfile(profiles = []) {
   return profiles.includes('production');

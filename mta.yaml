@@ -36,6 +36,7 @@ modules:
       - name: credit-guard-db
       - name: credit-guard-xsuaa
       - name: credit-guard-destination
+      - name: credit-guard-job-scheduler
     provides:
       - name: credit-guard-srv-api
         properties:
@@ -80,6 +81,12 @@ resources:
     parameters:
       service: destination
       service-plan: lite
+
+  - name: credit-guard-job-scheduler
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: jobscheduler
+      service-plan: standard
 
 build-parameters:
   before-all:

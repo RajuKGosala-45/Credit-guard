@@ -14,6 +14,9 @@ The XSUAA descriptor defines role templates for reader, requester, analyst, mana
 - Decision state and audit history are written transactionally.
 - The agent can prepare a proposal, but cannot decide it or directly change a limit.
 - CAP OData projections require `CreditReader` and are read-only.
+- Monitoring reads require `CreditReader`; manual runs and alert lifecycle actions require `CreditMonitor` or `CreditAdmin`. The scheduled trigger requires the separate `CreditMonitorJob` role.
+- Manual monitoring runs and their findings are restricted to the initiating user or a monitoring operator. Scheduled runs and alerts are portfolio-wide for readers. Do not grant the monitoring job role to interactive users.
+- Monitoring only reads customer data and persists findings/alerts. It does not create, approve, or change credit requests or limits.
 
 These are application controls; operational role-collection assignment and production identity mapping still require deployment validation.
 

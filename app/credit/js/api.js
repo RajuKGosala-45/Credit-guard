@@ -17,6 +17,20 @@ async function request(path, options = {}) {
 }
 
 export const getDashboard = () => request('/api/dashboard');
+export const getMonitoringSummary = () => request('/api/monitoring/summary');
+export const getMonitoringRuns = (limit = 20) => request(`/api/monitoring/runs?limit=${encodeURIComponent(limit)}`);
+export const getMonitoringFindings = runId => request(`/api/monitoring/runs/${encodeURIComponent(runId)}/findings`);
+export const getMonitoringAlerts = (status = 'ACTIVE') =>
+  request(`/api/monitoring/alerts?status=${encodeURIComponent(status)}`);
+export const runMonitoring = () => request('/api/monitoring/runs', { method: 'POST' });
+export const acknowledgeMonitoringAlert = id => request(
+  `/api/monitoring/alerts/${encodeURIComponent(id)}/acknowledge`,
+  { method: 'POST' }
+);
+export const resolveMonitoringAlert = id => request(
+  `/api/monitoring/alerts/${encodeURIComponent(id)}/resolve`,
+  { method: 'POST' }
+);
 export const getCustomers = () => request('/api/customers');
 export const getCustomer = id => request(`/api/customers/${encodeURIComponent(id)}`);
 export const getLimitRequests = status => request(`/api/limit-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`);

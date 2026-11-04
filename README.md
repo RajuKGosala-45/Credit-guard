@@ -24,6 +24,7 @@ Credit teams need a clear view of customer exposure, approaching limits, overdue
 - Limit request submission, approval routing, rejection, and decision history.
 - Tool-assisted chat with offline behavior when no model key is configured.
 - Optional PDF, DOCX, and UTF-8 TXT text extraction.
+- Read-only credit monitoring runs, persisted findings, and in-app alerts.
 - Local CAP SQLite profiles and Cloud Foundry/HANA/XSUAA configuration.
 - A read-only ABAP OData V4 connector and custom RAP source artifacts.
 
@@ -34,6 +35,7 @@ Browser (plain HTML, CSS, JavaScript)
   └─ /credit UI ── /api REST routes ── CAP services and SQLite/HANA
                                   ├── shared credit rules
                                   ├── bounded agent and LLM provider
+                                  ├── scheduled monitoring, findings, and alerts
                                   └── optional ABAP provider
                                        └── SAP Cloud SDK Destination
                                            └── custom ABAP OData service
@@ -80,7 +82,7 @@ The assistant can query customer and portfolio information, list pending request
 
 Complex requests are decomposed into validated tasks and run sequentially through the trusted tool registry. Results are checked before completion; approved read-only tools may receive at most two bounded retries for transient errors. Progress and safe summaries are persisted for the authenticated owner. Eligible pending read-only work can be resumed through the execution API; completed tasks are not repeated, and uncertain running tasks require manual review. Proposal tasks are neither retried nor resumed automatically.
 
-There is no background scheduler or autonomous portfolio monitor. See [AI agent design](docs/ai-agent/AI_AGENT_DESIGN.md).
+Credit monitoring reuses the configured portfolio provider and deterministic rules. It persists timestamped runs, findings, alert lifecycle events, and an in-app notification outbox. Monitoring is read-only and does not create, approve, or change credit requests. See [AI agent design](docs/ai-agent/AI_AGENT_DESIGN.md) and [API reference](docs/api/API_REFERENCE.md).
 
 ## 10. Credit Risk Calculation Rules
 
@@ -100,6 +102,15 @@ The local development profile uses CAP mock identities and does not verify passw
 
 The server derives permissions from the authenticated CAP identity. AI tools may prepare proposals but do not decide them. See [Security and authorization](docs/security/SECURITY_AND_AUTHORIZATION.md).
 
+### Scheduled monitoring deployment
+
+| Area | Current implementation and caveat |
+|---|---|
+| Scheduling | The MTA binds SAP BTP Job Scheduling and exposes a protected job trigger. An operator must still provision the recurring Job Scheduler job, interval, OAuth credentials, and role assignment in the target subaccount; no in-process timer is used. |
+| Data and rules | The monitoring service uses the selected local or ABAP provider and existing deterministic credit rules. Production MTA configuration selects ABAP, which is also used by dashboard/customer read APIs. |
+| Persistence and recovery | CDS/HANA entities store unique run slots, findings, alert state, event history, and recovery/outbox state. Conditional updates and unique constraints provide bounded claim/idempotency behavior, not a distributed transaction with the external scheduler. |
+| Alerts | The dashboard exposes role-protected in-app alerts and lifecycle actions. There is no email, SMS, or push-notification provider configured. |
+
 ## 13. Installation and Setup
 
 Prerequisites: Node.js 20 LTS is recommended for the CAP application, with npm. The separate App Router manifest requires Node.js 22 or 24.
@@ -117,7 +128,7 @@ The assistant runs offline by default when `ANTHROPIC_API_KEY` is unset. Provide
 
 ## 15. Running the Application
 
-Run `npm.cmd run dev` from the repository root and open [http://localhost:4005/credit/index.html](http://localhost:4005/credit/index.html). If prompted, use the local mock identity `reader` with password `test`. Other configured identities are `requester`, `controller`, `finance`, `analyst`, `manager`, `approver`, and `administrator`. The mock does not validate passwords; these values are only for local development.
+Run `npm.cmd run dev` from the repository root and open [http://localhost:4005/credit/index.html](http://localhost:4005/credit/index.html). If prompted, use the local mock identity `reader` with password `test`. Other configured identities are `requester`, `controller`, `finance`, `analyst`, `manager`, `approver`, `administrator`, and `monitor`. A `jobScheduler` mock identity exists for scheduled-trigger tests. The mock does not validate passwords; these values are only for local development.
 
 The persistent local profile is available with `npm.cmd run start:persistent`. It writes a local SQLite database, which is ignored by Git. See the [user guide](docs/user-guide/USER_GUIDE.md) for the UI workflow.
 
@@ -131,7 +142,7 @@ The suite uses Node’s built-in test runner. Tests use synthetic records and mo
 
 ## 17. API Overview
 
-The authenticated JSON API includes dashboard and customer reads, limit-request creation and decisions, approval history, chat, document analysis, agent history, and owner-scoped execution retrieval/recovery. CAP also exposes read-only `CreditService` projections under `/odata/v4/credit`.
+The authenticated JSON API includes dashboard and customer reads, monitoring runs/findings/alerts, limit-request creation and decisions, approval history, chat, document analysis, agent history, and owner-scoped execution retrieval/recovery. CAP also exposes read-only `CreditService` projections under `/odata/v4/credit`.
 
 See [API reference](docs/api/API_REFERENCE.md) for routes, authorization, payloads, and response behavior.
 
@@ -141,12 +152,14 @@ See [API reference](docs/api/API_REFERENCE.md) for routes, authorization, payloa
 - The ABAP service has not been activated or live-tested. Connector tests use mocks.
 - Credit exposure and overdue semantics are demo rules and require business-owner confirmation before real decisions.
 - HANA, XSUAA, App Router sign-in, Cloud Foundry deployment, recovery, and production operations are configured or documented but not validated in a deployed environment.
-- There is no scheduled monitoring, alert delivery, payment-history model, or autonomous action execution.
+- A BTP Job Scheduler binding and protected trigger are present, but the recurring job and service-role assignment must be provisioned externally. External email/SMS/push delivery is not configured.
+- The ABAP connector and BTP deployment have not been validated against a live tenant. Source timestamps are unknown unless the upstream service supplies them.
+- There is no payment-history model or autonomous monitoring action execution.
 - Only the Anthropic LLM adapter is implemented.
 
 ## 19. Future Enhancements
 
-After confirming business semantics and obtaining a non-production SAP environment: validate the ABAP service contract, test authenticated Destination connectivity, define data freshness and source-of-truth behavior, add scheduled risk monitoring and alert history, and validate deployment and recovery procedures. Any SAP write-back requires a separate approved business and authorization design.
+Next, provision and validate the external BTP Job Scheduler job, verify service-role assignment and authenticated ABAP access in a non-production environment, and select any approved external notification channel. Any SAP write-back requires a separate approved business and authorization design.
 
 ## Documentation
 

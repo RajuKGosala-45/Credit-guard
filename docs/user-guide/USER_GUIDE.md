@@ -17,6 +17,12 @@ The Portfolio tab shows aggregate exposure, limits, utilization, customer counts
 
 The agent cannot approve requests. Use different mock identities to demonstrate requester/approver separation.
 
+## Credit monitoring
+
+The Monitoring tab shows the latest persisted portfolio snapshot, deterministic findings, in-app alerts, and run history. Users with `CreditReader` can view portfolio monitoring results. Users with `CreditMonitor` or `CreditAdmin` can run an on-demand scan, acknowledge alerts, and resolve alerts. A complete later scan resolves alerts whose conditions are no longer present; incomplete scans do not clear alerts.
+
+Monitoring only reads credit data. It does not create, submit, approve, or change credit requests or limits. Optional AI text is an advisory based on aggregate counts; the existing deterministic rules remain authoritative. The deployed BTP Job Scheduler interval must be provisioned by an administrator; the application does not run an in-process timer. Notifications are in-app only.
+
 ## Assistant
 
 The assistant can answer supported questions about customer exposure, utilization thresholds, and pending requests. Offline mode is deterministic rather than a general-purpose language model. If an Anthropic provider is configured, messages are sent to that provider for interpretation and tool selection.

@@ -19,6 +19,29 @@ These endpoints require `CreditReader`.
 | GET | `/api/customers` | Customer summaries with exposure, overdue amount/share, utilization, flags, and status. |
 | GET | `/api/customers/:id` | One summary plus open items annotated with whether they consume credit and are overdue. |
 
+In local profiles these endpoints use the CAP database. When `CREDIT_GUARD_AGENT_DATA_SOURCE=abap`, dashboard and customer reads use the configured ABAP provider, keeping them aligned with monitoring. Response shapes are retained; ABAP-backed responses include source and retrieval metadata.
+
+## Credit monitoring
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/api/monitoring/summary` | `CreditReader` | Latest run and findings, last successful completion, and active/acknowledged alert counts. |
+| GET | `/api/monitoring/runs[?limit=N]` | `CreditReader` | Bounded run history. |
+| GET | `/api/monitoring/runs/latest` | `CreditReader` | Latest run, or 404 if no run exists. |
+| GET | `/api/monitoring/runs/:id` | `CreditReader`, owner or operator | One run and its findings. Scheduled runs are portfolio-wide. |
+| GET | `/api/monitoring/runs/:id/findings` | `CreditReader`, owner or operator | Findings for a run. |
+| POST | `/api/monitoring/runs` | `CreditMonitor` or `CreditAdmin` | Start an on-demand read-only monitoring run. |
+| POST | `/api/monitoring/jobs/run` | `CreditMonitorJob` | Scheduler trigger; accepts only a canonical `scheduledFor` ISO timestamp. The slot is idempotent. |
+| POST | `/api/monitoring/runs/:id/recover` | `CreditMonitor` or `CreditAdmin`, owner or operator | Claim and resume an eligible failed/stale run within the attempt bound. |
+| GET | `/api/monitoring/alerts[?status=ACTIVE]` | `CreditReader` | List portfolio alerts (`ACTIVE` includes acknowledged alerts; filters also accept `ACKNOWLEDGED`, `RESOLVED`, `ALL`). |
+| GET | `/api/monitoring/alerts/:id` | `CreditReader` | Read alert state and lifecycle events. |
+| POST | `/api/monitoring/alerts/:id/acknowledge` | `CreditMonitor` or `CreditAdmin` | Acknowledge an alert. |
+| POST | `/api/monitoring/alerts/:id/resolve` | `CreditMonitor` or `CreditAdmin` | Manually resolve an alert. |
+
+Monitoring statuses include `COMPLETED`, `PARTIAL`, `STALE`, and `FAILED`. Freshness is `UNKNOWN` unless the upstream source supplies a data timestamp; retrieval time alone is not represented as source-data freshness. Findings use the existing deterministic credit rules. Optional AI text is an aggregate-only advisory and is not a decision or a new risk score.
+
+Manual run history and findings are owner-scoped to the initiating user or visible to monitoring operators; scheduled runs are shared portfolio records. Alerts are portfolio-wide for authenticated readers. All monitoring actions are read-only with respect to customer credit limits and limit requests. The scheduler binding does not provision the recurring Job Scheduler job, interval, OAuth configuration, or service-role assignment; those remain deployment tasks. No external email/SMS/push provider is configured.
+
 ## Limit requests
 
 | Method | Path | Access | Purpose |

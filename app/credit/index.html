@@ -30,6 +30,34 @@
       <button class="tab" type="button" data-tab="chat">Credit assistant</button>
     </nav>
     <section id="dashboard-panel" class="tab-panel active">
+      <section class="card monitoring-card" aria-labelledby="monitoring-heading">
+        <div class="card-heading">
+          <div><p class="eyebrow">AUTOMATED CREDIT MONITORING</p><h2 id="monitoring-heading">Monitoring status</h2></div>
+          <div class="document-actions">
+            <button id="refresh-monitoring" class="button secondary" type="button">Refresh monitoring</button>
+            <button id="run-monitoring" class="button primary" type="button" hidden>Run now</button>
+          </div>
+        </div>
+        <p id="monitoring-status" class="muted" role="status">No monitoring run is available yet.</p>
+        <div id="monitoring-kpis" class="kpi-grid monitoring-kpis"></div>
+        <section class="monitoring-advisory">
+          <h3>Risk summary</h3>
+          <p id="monitoring-advisory" class="muted">Run monitoring to see a deterministic portfolio summary.</p>
+          <small id="monitoring-advisory-source" class="muted"></small>
+        </section>
+        <section class="monitoring-section">
+          <h3>Active alerts</h3>
+          <div id="monitoring-alerts" class="monitoring-list"></div>
+        </section>
+        <section class="monitoring-section">
+          <h3>Latest customer findings</h3>
+          <div id="monitoring-findings" class="table-wrap"></div>
+        </section>
+        <section class="monitoring-section">
+          <h3>Monitoring history</h3>
+          <div id="monitoring-history" class="table-wrap"></div>
+        </section>
+      </section>
       <div class="content-grid">
         <section class="card exposure-card">
           <div class="card-heading"><div><p class="eyebrow">PORTFOLIO MIX</p><h2>Exposure analysis</h2></div>

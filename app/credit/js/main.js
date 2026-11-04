@@ -1,6 +1,7 @@
 import * as api from './api.js';
 import { state } from './state.js';
 import { renderKpis, renderExposure, handleExposureGroup } from './views/dashboard.js';
+import { renderMonitoring } from './views/monitoring.js';
 import { renderCustomers, handleCustomerClick } from './views/customers.js';
 import { renderRequestCustomers, handleRequestSubmit } from './views/limitRequest.js';
 import { renderApprovals, handleApprovalClick } from './views/approvals.js';
@@ -30,6 +31,51 @@ async function loadApprovals() {
   state.requests = await api.getLimitRequests();
   renderApprovals(state.requests);
 }
+
+async function loadMonitoring() {
+  const [summary, runs, alerts] = await Promise.all([
+    api.getMonitoringSummary(),
+    api.getMonitoringRuns(),
+    api.getMonitoringAlerts()
+  ]);
+  renderMonitoring({
+    summary,
+    runs,
+    alerts,
+    findings: summary.latestRun?.findings || []
+  });
+}
+
+document.querySelector('#refresh-monitoring').addEventListener('click', () =>
+  loadMonitoring().catch(error => showError(error.message)));
+document.querySelector('#run-monitoring').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api.runMonitoring();
+    await loadMonitoring();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+document.querySelector('#monitoring-alerts').addEventListener('click', async event => {
+  const button = event.target.closest('[data-alert-action]');
+  if (!button) return;
+  button.disabled = true;
+  try {
+    if (button.dataset.alertAction === 'acknowledge') {
+      await api.acknowledgeMonitoringAlert(button.dataset.alertId);
+    } else {
+      await api.resolveMonitoringAlert(button.dataset.alertId);
+    }
+    await loadMonitoring();
+  } catch (error) {
+    showError(error.message);
+    button.disabled = false;
+  }
+});
 
 document.querySelector('.tabs').addEventListener('click', event => {
   const button = event.target.closest('[data-tab]');
@@ -159,3 +205,4 @@ document.querySelector('#clear-document').addEventListener('click', () =>
 
 renderChat(state.chatMessages);
 loadPortfolio().catch(error => showError(error.message));
+loadMonitoring().catch(error => showError(error.message));

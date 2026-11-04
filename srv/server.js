@@ -5,10 +5,28 @@ const path = require('path');
 const multer = require('multer');
 const { validateProductionBindings } = require('./deployment');
 const creditService = require('./creditService');
+const { createPortfolioDataProvider } = require('./portfolioDataProvider');
 const { validateActorId } = require('./limitRequests');
 const { chat, toolDefinitions } = require('./agent');
 const { PLAN_VERSION, validatePlan } = require('./agentPlan');
 const { extractDocument, MAX_EXTRACTED_CHARACTERS } = require('./documents');
+const {
+  executeMonitoringRun,
+  publicFinding,
+  publicRun,
+  recoverMonitoringRun
+} = require('./monitoringService');
+const {
+  getMonitoringAlert,
+  getMonitoringRun,
+  latestMonitoringRun,
+  latestSuccessfulMonitoringRun,
+  listMonitoringAlertEvents,
+  listMonitoringAlerts,
+  listMonitoringFindings,
+  listMonitoringRuns,
+  transitionMonitoringAlert
+} = require('./monitoringStore');
 const {
   MEMORY_ENABLED,
   clearAgentHistory,
@@ -72,6 +90,36 @@ function requireRole(role) {
   };
 }
 
+function requireAnyRole(...roles) {
+  return (req, res, next) => {
+    const user = currentUser(req);
+    if (!roles.some(role => user?.is(role))) {
+      res.status(403).json({ error: `One of these permissions is required: ${roles.join(', ')}.` });
+      return;
+    }
+    next();
+  };
+}
+
+function isMonitoringRunOwnerOrOperator(user, run) {
+  return run.triggeredBy === user.id
+    || run.runKind === 'SCHEDULED'
+    || user.is('CreditMonitor')
+    || user.is('CreditAdmin');
+}
+
+function validateScheduledFor(value) {
+  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))
+    || new Date(value).toISOString() !== value) {
+    throw new TypeError('scheduledFor must be a canonical ISO timestamp.');
+  }
+  const scheduledFor = new Date(value);
+  if (scheduledFor.getTime() > Date.now() + 5 * 60 * 1000) {
+    throw new TypeError('scheduledFor cannot be more than five minutes in the future.');
+  }
+  return scheduledFor.toISOString();
+}
+
 cds.on('bootstrap', app => {
   app.get('/health/live', (_req, res) => res.status(200).json({ status: 'live' }));
   app.get('/health/ready', (_req, res) => {
@@ -87,7 +135,8 @@ cds.on('bootstrap', app => {
 
   app.get('/api/dashboard', requireRole('CreditReader'), async (_req, res) => {
     try {
-      const customers = await creditService.getCustomerSummaries(cds.db, currentUser(_req));
+      const provider = createPortfolioDataProvider({ db: cds.db, user: currentUser(_req) });
+      const customers = await provider.listCustomers();
       res.json({
         kpis: creditService.aggregatePortfolio(customers),
         exposure: {
@@ -97,22 +146,196 @@ cds.on('bootstrap', app => {
         }
       });
     } catch (error) {
-      res.status(error.statusCode || (error instanceof TypeError ? 422 : 500)).json({ error: error.message });
+      res.status(error.statusCode || (error instanceof TypeError ? 422 : 500))
+        .json({ error: error.statusCode ? error.message : 'The credit portfolio is unavailable.' });
     }
   });
 
+  app.post('/api/monitoring/runs', requireAnyRole('CreditMonitor', 'CreditAdmin'), async (req, res) => {
+    try {
+      const run = await executeMonitoringRun({ db: cds.db, user: currentUser(req), runKind: 'MANUAL' });
+      return res.status(run.status === 'RUNNING' ? 202 : 200).json(run);
+    } catch (error) {
+      return res.status(error.statusCode || (error instanceof TypeError ? 400 : 500))
+        .json({ error: error.statusCode ? error.message : 'Monitoring could not be started safely.' });
+    }
+  });
+
+  app.post('/api/monitoring/jobs/run', requireRole('CreditMonitorJob'), async (req, res) => {
+    try {
+      if (!req.body || Object.keys(req.body).some(key => key !== 'scheduledFor')
+        || !Object.hasOwn(req.body, 'scheduledFor')) {
+        return res.status(400).json({ error: 'Provide only the scheduledFor timestamp.' });
+      }
+      const scheduledFor = validateScheduledFor(req.body.scheduledFor);
+      const run = await executeMonitoringRun({
+        db: cds.db,
+        user: currentUser(req),
+        runKind: 'SCHEDULED',
+        slotKey: `scheduled:${scheduledFor}`
+      });
+      return res.status(run.status === 'RUNNING' ? 202 : 200).json(run);
+    } catch (error) {
+      return res.status(error.statusCode || (error instanceof TypeError ? 400 : 500))
+        .json({ error: error.statusCode ? error.message : 'Scheduled monitoring could not be started safely.' });
+    }
+  });
+
+  app.get('/api/monitoring/summary', requireRole('CreditReader'), async (_req, res) => {
+    try {
+      const [run, alerts] = await Promise.all([
+        latestMonitoringRun(cds.db),
+        listMonitoringAlerts(cds.db, 'ACTIVE')
+      ]);
+      const findings = run ? await listMonitoringFindings(cds.db, run.ID) : [];
+      const lastSuccessful = await latestSuccessfulMonitoringRun(cds.db);
+      return res.json({
+        latestRun: run ? publicRun(run, findings.map(publicFinding)) : null,
+        lastSuccessfulAt: lastSuccessful?.completedAt || null,
+        canOperate: Boolean(currentUser(_req)?.is('CreditMonitor') || currentUser(_req)?.is('CreditAdmin')),
+        activeAlertCount: alerts.length,
+        alertsBySeverity: Object.fromEntries(
+          ['CRITICAL', 'HIGH', 'MEDIUM', 'REVIEW', 'LOW'].map(severity => [
+            severity,
+            alerts.filter(alert => alert.severity === severity).length
+          ])
+        )
+      });
+    } catch {
+      return res.status(500).json({ error: 'Monitoring summary is unavailable.' });
+    }
+  });
+
+  app.get('/api/monitoring/runs', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+      const runs = await listMonitoringRuns(cds.db, limit);
+      return res.json(runs.map(run => publicRun(run)));
+    } catch (error) {
+      return res.status(error instanceof TypeError ? 400 : 500)
+        .json({ error: error instanceof TypeError ? error.message : 'Monitoring history is unavailable.' });
+    }
+  });
+
+  app.get('/api/monitoring/runs/latest', requireRole('CreditReader'), async (_req, res) => {
+    try {
+      const run = await latestMonitoringRun(cds.db);
+      if (!run) return res.status(404).json({ error: 'No monitoring run is available.' });
+      return res.json(publicRun(run));
+    } catch {
+      return res.status(500).json({ error: 'The latest monitoring run is unavailable.' });
+    }
+  });
+
+  app.get('/api/monitoring/runs/:id', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const run = await getMonitoringRun(cds.db, req.params.id);
+      if (!run) return res.status(404).json({ error: 'Monitoring run was not found.' });
+      if (!isMonitoringRunOwnerOrOperator(currentUser(req), run)) {
+        return res.status(403).json({ error: 'You are not authorized to view this monitoring run.' });
+      }
+      const findings = await listMonitoringFindings(cds.db, run.ID);
+      return res.json(publicRun(run, findings.map(publicFinding)));
+    } catch {
+      return res.status(500).json({ error: 'Monitoring run details are unavailable.' });
+    }
+  });
+
+  app.get('/api/monitoring/runs/:id/findings', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const run = await getMonitoringRun(cds.db, req.params.id);
+      if (!run) return res.status(404).json({ error: 'Monitoring run was not found.' });
+      if (!isMonitoringRunOwnerOrOperator(currentUser(req), run)) {
+        return res.status(403).json({ error: 'You are not authorized to view this monitoring run.' });
+      }
+      return res.json((await listMonitoringFindings(cds.db, run.ID)).map(publicFinding));
+    } catch {
+      return res.status(500).json({ error: 'Monitoring findings are unavailable.' });
+    }
+  });
+
+  app.post('/api/monitoring/runs/:id/recover', requireAnyRole('CreditMonitor', 'CreditAdmin'), async (req, res) => {
+    try {
+      const run = await getMonitoringRun(cds.db, req.params.id);
+      if (!run) return res.status(404).json({ error: 'Monitoring run was not found.' });
+      if (!isMonitoringRunOwnerOrOperator(currentUser(req), run)) {
+        return res.status(403).json({ error: 'You are not authorized to recover this monitoring run.' });
+      }
+      const recovered = await recoverMonitoringRun({
+        db: cds.db,
+        user: currentUser(req),
+        runId: run.ID
+      });
+      return res.status(200).json(recovered);
+    } catch (error) {
+      return res.status(error.statusCode || 500)
+        .json({ error: error.statusCode ? error.message : 'Monitoring recovery could not be completed safely.' });
+    }
+  });
+
+  app.get('/api/monitoring/alerts', requireRole('CreditReader'), async (req, res) => {
+    try {
+      return res.json(await listMonitoringAlerts(cds.db, req.query.status || 'ACTIVE'));
+    } catch (error) {
+      return res.status(error instanceof TypeError ? 400 : 500)
+        .json({ error: error instanceof TypeError ? error.message : 'Monitoring alerts are unavailable.' });
+    }
+  });
+
+  app.get('/api/monitoring/alerts/:id', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const alert = await getMonitoringAlert(cds.db, req.params.id);
+      if (!alert) return res.status(404).json({ error: 'Monitoring alert was not found.' });
+      const events = await listMonitoringAlertEvents(cds.db, alert.ID);
+      return res.json({ ...alert, events });
+    } catch {
+      return res.status(500).json({ error: 'Monitoring alert details are unavailable.' });
+    }
+  });
+
+  for (const action of ['acknowledge', 'resolve']) {
+    app.post(
+      `/api/monitoring/alerts/:id/${action}`,
+      requireAnyRole('CreditMonitor', 'CreditAdmin'),
+      async (req, res) => {
+        try {
+          if (req.body && Object.keys(req.body).length) {
+            return res.status(400).json({ error: 'This alert action does not accept a request body.' });
+          }
+          const alert = await transitionMonitoringAlert(cds.db, {
+            alertId: req.params.id,
+            action: action === 'acknowledge' ? 'ACKNOWLEDGED' : 'RESOLVED',
+            actorId: validateActorId(currentUser(req).id)
+          });
+          return res.json(alert);
+        } catch (error) {
+          return res.status(error.statusCode || (error instanceof TypeError ? 400 : 500))
+            .json({ error: error.statusCode ? error.message : 'The alert could not be updated safely.' });
+        }
+      }
+    );
+  }
+
   app.get('/api/customers', requireRole('CreditReader'), async (_req, res) => {
-    try { res.json(await creditService.getCustomerSummaries(cds.db, currentUser(_req))); }
-    catch (error) { res.status(error.statusCode || (error instanceof TypeError ? 422 : 500)).json({ error: error.message }); }
+    try {
+      const provider = createPortfolioDataProvider({ db: cds.db, user: currentUser(_req) });
+      res.json(await provider.listCustomers());
+    }
+    catch (error) {
+      res.status(error.statusCode || (error instanceof TypeError ? 422 : 500))
+        .json({ error: error.statusCode ? error.message : 'Customer summaries are unavailable.' });
+    }
   });
 
   app.get('/api/customers/:id', requireRole('CreditReader'), async (req, res) => {
     try {
-      const customer = await creditService.getCustomerDetail(cds.db, currentUser(req), req.params.id);
+      const provider = createPortfolioDataProvider({ db: cds.db, user: currentUser(req) });
+      const customer = await provider.getCustomer(req.params.id);
       if (!customer) return res.status(404).json({ error: `Customer ${req.params.id} was not found.` });
       return res.json(customer);
     } catch (error) {
-      return res.status(error.statusCode || (error instanceof TypeError ? 422 : 500)).json({ error: error.message });
+      return res.status(error.statusCode || (error instanceof TypeError ? 422 : 500))
+        .json({ error: error.statusCode ? error.message : 'Customer details are unavailable.' });
     }
   });
 

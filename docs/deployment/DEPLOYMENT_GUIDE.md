@@ -22,7 +22,7 @@ Copy `.env.example` to `.env` only when local overrides are required. The templa
 | `LLM_MODEL` | Optional Anthropic model name. |
 | `LLM_TIMEOUT_MS` | Positive whole-number provider timeout in milliseconds; defaults to `15000` and is limited to `120000`. |
 | `AGENT_MEMORY_ENABLED` | Enables user-scoped conversation persistence when set to `true`. |
-| `CREDIT_GUARD_AGENT_DATA_SOURCE` | `local` by default, or `abap` for the Destination-backed agent provider. |
+| `CREDIT_GUARD_AGENT_DATA_SOURCE` | `local` by default, or `abap` for the Destination-backed agent, dashboard/customer, and monitoring provider. |
 | `ABAP_DESTINATION_NAME` | Named Destination entry used by the connector. |
 | `ABAP_CUSTOMERS_PATH`, `ABAP_OPEN_ITEMS_PATH` | OData collection paths relative to the Destination URL. |
 | `ABAP_HTTP_TIMEOUT_MS`, `ABAP_MAX_PAGES`, `ABAP_PAGE_SIZE` | Connector request and pagination bounds. |
@@ -32,6 +32,10 @@ Never put credentials in browser variables, tracked files, command output, or lo
 ## Cloud Foundry configuration
 
 The repository contains `mta.yaml`, `xs-security.json`, and an App Router manifest. The MTA descriptor declares CAP server, HDI deployer, App Router, HANA HDI, XSUAA, and Destination service resources. The production startup guard fails closed if required configuration/bindings are absent.
+
+The MTA also binds SAP BTP Job Scheduling and exposes `/api/monitoring/jobs/run`. Binding the service alone does not create a recurring job. Before enabling scheduled monitoring, provision the external Job Scheduler job and interval, configure its OAuth client/credentials, grant the service identity the `CreditMonitorJob` role and `CreditReader` scope, and verify authenticated calls in a non-production subaccount. The endpoint accepts a canonical `scheduledFor` timestamp and enforces a unique run slot. Do not configure a job until role assignment, source access, and operational ownership are validated.
+
+The monitoring dashboard provides in-app alert visibility and acknowledgment/resolution. No external notification destination is configured. Monitoring and dashboard/customer reads use the same selected data provider; production configuration selects ABAP. Runs persist to CDS/HANA and can be recovered within the configured lease and attempt bounds. Upstream data freshness remains `UNKNOWN` unless the ABAP service returns a trustworthy source timestamp.
 
 The separate App Router package declares Node.js 22 or 24. Verify compatible Cloud Foundry buildpacks and runtime versions before deployment. CAP production uses the package’s HANA profile.
 

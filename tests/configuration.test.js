@@ -40,7 +40,9 @@ test('XSUAA role templates define all supported business role collections and pe
     'CreditAnalyst',
     'CreditManager',
     'CreditApprover',
-    'Administrator'
+    'Administrator',
+    'CreditMonitorOperator',
+    'MonitoringJob'
   ];
 
   for (const name of expected) assert.ok(templates.has(name), `Missing ${name} role template.`);
@@ -82,7 +84,9 @@ test('production startup rejects SQLite, mocked authentication, and missing serv
     env: {
       ABAP_DESTINATION_NAME: 'CREDIT_GUARD_ABAP',
       CREDIT_GUARD_AGENT_DATA_SOURCE: 'local',
-      VCAP_SERVICES: JSON.stringify({ hana: [{}], xsuaa: [{}], destination: [{}] })
+      VCAP_SERVICES: JSON.stringify({
+        hana: [{}], xsuaa: [{}], destination: [{}], jobscheduler: [{}]
+      })
     }
   }), /ABAP customer data provider/i);
 });
@@ -98,7 +102,8 @@ test('production startup requires bound HANA, XSUAA, Destination service, and AB
       VCAP_SERVICES: JSON.stringify({
         hana: [{}],
         xsuaa: [{}],
-        destination: [{}]
+        destination: [{}],
+        jobscheduler: [{}]
       })
     }
   });
@@ -122,7 +127,12 @@ test('App Router protects application routes and exposes only health routes anon
   assert.equal(mta.ID, 'credit-guard');
   assert.ok(mta.modules.some(module => module.name === 'credit-guard-srv' && module.path === 'gen/srv'));
   assert.ok(mta.modules.some(module => module.name === 'credit-guard-db-deployer' && module.path === 'gen/db'));
-  for (const binding of ['credit-guard-db', 'credit-guard-xsuaa', 'credit-guard-destination']) {
+  for (const binding of [
+    'credit-guard-db',
+    'credit-guard-xsuaa',
+    'credit-guard-destination',
+    'credit-guard-job-scheduler'
+  ]) {
     assert.ok(mta.resources.some(resource => resource.name === binding));
   }
   const server = mta.modules.find(module => module.name === 'credit-guard-srv');

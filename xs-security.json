@@ -10,7 +10,9 @@
     { "name": "$XSAPPNAME.CreditAnalyst", "description": "Analyze portfolio and prepare credit requests" },
     { "name": "$XSAPPNAME.CreditManager", "description": "Manage credit requests and controller approvals" },
     { "name": "$XSAPPNAME.CreditApprover", "description": "Approve or reject routed credit requests" },
-    { "name": "$XSAPPNAME.CreditAdmin", "description": "Administrative Credit Guard access" }
+    { "name": "$XSAPPNAME.CreditAdmin", "description": "Administrative Credit Guard access" },
+    { "name": "$XSAPPNAME.CreditMonitor", "description": "Run monitoring and manage monitoring alerts" },
+    { "name": "$XSAPPNAME.CreditMonitorJob", "description": "Service-to-service authorization for scheduled monitoring jobs" }
   ],
   "role-templates": [
     {
@@ -37,6 +39,16 @@
       "name": "Administrator",
       "description": "Full Credit Guard application role set",
       "scope-references": ["$XSAPPNAME.CreditReader", "$XSAPPNAME.CreditRequester", "$XSAPPNAME.CreditController", "$XSAPPNAME.FinanceHead", "$XSAPPNAME.CreditAnalyst", "$XSAPPNAME.CreditManager", "$XSAPPNAME.CreditApprover", "$XSAPPNAME.CreditAdmin"]
+    },
+    {
+      "name": "CreditMonitorOperator",
+      "description": "Run portfolio monitoring and manage alerts",
+      "scope-references": ["$XSAPPNAME.CreditReader", "$XSAPPNAME.CreditMonitor"]
+    },
+    {
+      "name": "MonitoringJob",
+      "description": "Service identity for the scheduled monitoring trigger",
+      "scope-references": ["$XSAPPNAME.CreditReader", "$XSAPPNAME.CreditMonitorJob"]
     }
   ]
 }
