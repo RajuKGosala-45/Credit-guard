@@ -21,7 +21,7 @@ export function renderCustomers(customers) {
   }).join('');
 }
 
-export function renderCustomerDetail(customer) {
+export function renderCustomerDetail(customer, payments = []) {
   const host = document.querySelector('#customer-detail');
   const flags = customer.flags.length ? customer.flags.join(', ') : 'None';
   const status = customer.status === 'MANUAL_REVIEW' ? 'Manual review'
@@ -30,17 +30,24 @@ export function renderCustomerDetail(customer) {
   host.innerHTML = `<div class="detail-heading"><div><p class="eyebrow">CUSTOMER DETAILS</p><h2>${escapeHTML(customer.name)} · ${escapeHTML(customer.ID)}</h2></div>
     <span class="chip ${statusClass(customer.status)}">${escapeHTML(status)}</span></div>
     <p class="muted">Risk ${escapeHTML(customer.riskClass)} · Last review ${escapeHTML(formatDate(customer.lastReviewDate))} · Flags: ${escapeHTML(flags)}</p>
+    <p class="muted">Exposure ${escapeHTML(formatMoney(customer.exposure, customer.currency))} of ${escapeHTML(formatMoney(customer.creditLimit, customer.currency))} · ${escapeHTML(formatPercent(customer.utilisation))} utilised · ${escapeHTML(formatMoney(customer.overdueAmount, customer.currency))} overdue</p>
     <h3>Open items (${items.length})</h3>${items.length ? `<ul class="detail-items">${items.map(item =>
       `<li>${escapeHTML(item.type)} · ${escapeHTML(formatMoney(Number(item.amount), item.currency || customer.currency))} · Due ${escapeHTML(formatDate(item.dueDate))} · ${escapeHTML(item.isOverdue ? 'Overdue (by due date)' : item.status)}${item.creditConsuming ? '' : ' · excluded from exposure'}</li>`
-    ).join('')}</ul>` : '<p class="empty-state">No open items for this customer.</p>'}`;
+    ).join('')}</ul>` : '<p class="empty-state">No open items for this customer.</p>'}
+    <h3>Payment history${Array.isArray(payments) ? ` (${payments.length})` : ''}</h3>${Array.isArray(payments) && payments.length ? `<div class="table-wrap"><table><thead><tr><th>Reference</th><th>Posting date</th><th>Amount</th><th>Status</th></tr></thead><tbody>${payments.map(payment =>
+      `<tr><td>${escapeHTML(payment.reference)}</td><td>${escapeHTML(formatDate(payment.postingDate))}</td><td>${escapeHTML(formatMoney(payment.amount, payment.currency || customer.currency))}</td><td>${escapeHTML(payment.status)}</td></tr>`
+    ).join('')}</tbody></table></div>` : Array.isArray(payments)
+      ? '<p class="empty-state">No payment history is available for this customer.</p>'
+      : '<p class="empty-state">Payment history is not available from this configured source.</p>'}`;
 }
 
-export async function handleCustomerClick(event, getCustomer) {
+export async function handleCustomerClick(event, getCustomer, getPayments) {
   const explain = event.target.closest('[data-explain]');
   if (explain) return { explainId: explain.dataset.explain };
   const row = event.target.closest('[data-customer-id]');
   if (!row) return null;
   const customer = await getCustomer(row.dataset.customerId);
-  renderCustomerDetail(customer);
+  const payments = customer.source ? null : await getPayments(row.dataset.customerId);
+  renderCustomerDetail(customer, payments);
   return { customer };
 }

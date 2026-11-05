@@ -1,4 +1,5 @@
 const { createPortfolioDataProvider } = require('./portfolioDataProvider');
+const creditService = require('./creditService');
 const {
   createMonitoringRun,
   getMonitoringRun,
@@ -107,12 +108,26 @@ function createFindings(customers, source, retrievedAt) {
 }
 
 function summarize(customers, findings) {
+  const portfolio = creditService.aggregatePortfolio(customers);
+  const currencyTotals = portfolio.currencyTotals || (portfolio.currency ? [{
+    currency: portfolio.currency,
+    totalExposure: portfolio.totalExposure,
+    totalLimit: portfolio.totalLimit,
+    availableCredit: portfolio.availableCredit,
+    overdueAmount: portfolio.overdueAmount
+  }] : []);
   return {
     customersMonitored: customers.length,
     warningCustomers: customers.filter(customer => customer.status === 'WARNING').length,
     breachedCustomers: customers.filter(customer => customer.status === 'BREACH').length,
     criticalCustomers: customers.filter(customer => customer.flags.includes('CRITICAL')).length,
     overdueCustomers: customers.filter(customer => customer.overdueAmount > 0).length,
+    overdueInvoiceCount: portfolio.overdueInvoiceCount,
+    totalExposure: portfolio.totalExposure,
+    totalLimit: portfolio.totalLimit,
+    availableCredit: portfolio.availableCredit,
+    currency: portfolio.currency || null,
+    currencyTotals,
     manualReviewCustomers: customers.filter(customer => customer.status === 'MANUAL_REVIEW').length,
     findings: findings.length
   };

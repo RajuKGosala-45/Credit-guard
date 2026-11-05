@@ -25,7 +25,7 @@ Missing or malformed dates are treated as unknown, not overdue. Confirm the busi
 
 Amounts and limits must be finite, non-negative numbers. Invalid source values produce an explicit validation error rather than contaminating totals with `NaN`.
 
-When currency is provided, all eligible items for a customer must use the same currency as each other and the customer’s limit. Currency is represented as a three-letter code. The local CDS schema has no currency field; local seed values are synthetic INR. Portfolio aggregation keeps distinct currencies separate and does not present a combined cross-currency amount.
+When currency is provided, all eligible items for a customer must use the same currency as each other and the customer’s limit. Currency is represented as a three-letter code. The local CDS model stores currency on customers, open items, and payments; the synthetic local fixtures explicitly use INR. Portfolio aggregation keeps distinct currencies separate and does not present a combined cross-currency amount.
 
 ## Utilization and classification
 
@@ -34,11 +34,12 @@ The internal/API `utilisation` value is a ratio to preserve the established cont
 | Condition | Main status | Additional flag |
 |---|---|---|
 | Credit limit is zero | `MANUAL_REVIEW` | `NO_LIMIT` |
-| Exposure is greater than a positive limit | `BREACH` | `CRITICAL` when exposure is more than 120% of the limit |
-| Utilization is at least 80%, with exposure no greater than the limit | `WARNING` | `WARNING` flag |
+| Utilization is at least 120% of a positive limit | `BREACH` | `CRITICAL` |
+| Utilization is at least 100% and below 120% | `BREACH` | `BREACH` flag |
+| Utilization is at least 80% and below 100% | `WARNING` | `WARNING` flag |
 | Utilization is below 80% | `HEALTHY` | None required |
 
-At exactly 100%, the customer is `WARNING`. A breach begins only above 100%. A zero limit returns `null` utilization, including when exposure is zero; it never returns `Infinity`.
+These are the current inclusive demo boundaries: exactly 80% is `WARNING`, exactly 100% is `BREACH`, and exactly 120% is `CRITICAL` (and `BREACH`). A zero limit returns `null` utilization, including when exposure is zero; it never returns `Infinity`.
 
 ## Additional indicators
 
@@ -49,4 +50,4 @@ At exactly 100%, the customer is `WARNING`. A breach begins only above 100%. A z
 
 ## Unconfirmed business assumptions
 
-Business and SAP owners must confirm item eligibility, whether sales orders should be included with receivables, reversal/clearing semantics, currency and credit-segment treatment, the business timezone, overdue policy, the 80% and 30% thresholds, the 12-month review interval, and critical-risk labeling. No standard SAP exposure calculation is inferred here.
+Business and SAP owners must confirm item eligibility, whether sales orders should be included with receivables, reversal/clearing semantics, currency and credit-segment treatment, the business timezone, overdue policy, the 80%, 100%, 120%, and 30% thresholds, the 12-month review interval, and critical-risk labeling before these demo rules are used for real credit decisions. No standard SAP exposure calculation or client policy is inferred here.

@@ -146,3 +146,33 @@ test('token acquisition failure prevents a write from being submitted', async t 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/credit/index.html');
 });
+
+test('standalone loopback CAP development allows role-protected writes without an App Router token', async t => {
+  const api = await loadApi();
+  const originalLocation = globalThis.location;
+  Object.defineProperty(globalThis, 'location', {
+    configurable: true,
+    value: { hostname: 'localhost' }
+  });
+  t.after(() => {
+    if (originalLocation === undefined) delete globalThis.location;
+    else Object.defineProperty(globalThis, 'location', { configurable: true, value: originalLocation });
+  });
+
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url, options });
+    if (url === '/credit/index.html') {
+      return new Response('<html></html>');
+    }
+    return jsonResponse({ accepted: true });
+  });
+
+  await api.runMonitoring();
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, '/credit/index.html');
+  assert.equal(calls[1].url, '/api/monitoring/runs');
+  assert.equal(calls[1].options.headers.has('X-CSRF-Token'), false);
+  assert.equal(calls[1].options.credentials, 'same-origin');
+});

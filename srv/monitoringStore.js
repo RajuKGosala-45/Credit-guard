@@ -647,14 +647,16 @@ async function getMonitoringRun(db, runId) {
 }
 
 async function latestMonitoringRun(db) {
-  return (await db.run(SELECT.one.from('credit.MonitoringRuns')
-    .orderBy('startedAt desc'))) || null;
+  const result = await db.run(SELECT.one.from('credit.MonitoringRuns')
+    .orderBy('startedAt desc'));
+  return (Array.isArray(result) ? result[0] : result) || null;
 }
 
 async function latestSuccessfulMonitoringRun(db) {
-  return (await db.run(SELECT.one.from('credit.MonitoringRuns')
+  const result = await db.run(SELECT.one.from('credit.MonitoringRuns')
     .where({ status: 'COMPLETED' })
-    .orderBy('completedAt desc'))) || null;
+    .orderBy('completedAt desc'));
+  return (Array.isArray(result) ? result[0] : result) || null;
 }
 
 async function listMonitoringRuns(db, limit = 20) {

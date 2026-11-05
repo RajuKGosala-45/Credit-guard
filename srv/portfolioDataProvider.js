@@ -2,6 +2,7 @@ const creditService = require('./creditService');
 const { classifyCustomer } = require('./rules');
 const { AbapClient } = require('./integrations/abap/client');
 const { createAgentCustomerProvider } = require('./integrations/abap/customer-provider');
+const { latestCanonicalSnapshot } = require('./ingestionService');
 
 function assertReader(user) {
   if (!user || user._is_anonymous || user._is_privileged || !user.id || !user.is?.('CreditReader')) {
@@ -36,6 +37,9 @@ function createPortfolioDataProvider({
   });
   return {
     source: provider.source,
+    getIngestionSnapshot(sourceId, entityType, options) {
+      return latestCanonicalSnapshot(db, sourceId, entityType, options);
+    },
     async listCustomers(options) {
       const records = await provider.listCustomers(options);
       return provider.source === 'abap' ? records.map(normalizeAbapAnalysis) : records;

@@ -11,6 +11,7 @@
     "start": "cds-serve",
     "start:cf": "cds-serve",
     "start:persistent": "cds-serve --profile persistent",
+    "build": "npm run build:cf",
     "test": "node --test",
     "build:cf": "cds build --production --opts contentHdbtabledata=false && node -e \"const fs=require('fs');fs.mkdirSync('gen/srv/app',{recursive:true});fs.cpSync('app/credit','gen/srv/app/credit',{recursive:true})\""
   },

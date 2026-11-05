@@ -43,22 +43,30 @@ test('dashboard API returns the established KPI and exposure contract', async ()
   assert.equal(response.status, 200);
   assert.deepEqual(Object.keys(body).sort(), ['exposure', 'kpis']);
   assert.deepEqual(Object.keys(body.kpis).sort(), [
+    'availableCredit',
+    'criticalCustomers',
     'currency',
     'customerCount',
     'customersBreached',
     'healthyCustomers',
     'manualReviewCustomers',
     'overallUtilisation',
+    'overdueAmount',
+    'overdueInvoiceCount',
     'overdueRiskCustomers',
     'totalExposure',
     'totalLimit',
     'warningCustomers'
   ]);
-  assert.equal(body.kpis.totalExposure, 5_535_000);
-  assert.equal(body.kpis.totalLimit, 9_400_000);
-  assert.equal(body.kpis.customerCount, 12);
-  assert.equal(body.kpis.customersBreached, 2);
-  assert.ok(Math.abs(body.kpis.overallUtilisation - (5_535_000 / 9_400_000)) < 1e-12);
+  assert.equal(body.kpis.totalExposure, 6_535_000);
+  assert.equal(body.kpis.totalLimit, 10_400_000);
+  assert.equal(body.kpis.availableCredit, '3865000.00');
+  assert.equal(body.kpis.customerCount, 13);
+  assert.equal(body.kpis.customersBreached, 3);
+  assert.equal(body.kpis.warningCustomers, 3);
+  assert.equal(body.kpis.criticalCustomers, 1);
+  assert.equal(body.kpis.overdueInvoiceCount, 12);
+  assert.ok(Math.abs(body.kpis.overallUtilisation - (6_535_000 / 10_400_000)) < 1e-12);
 
   for (const group of ['country', 'companyCode', 'customer']) {
     assert.ok(Array.isArray(body.exposure[group]));
@@ -87,7 +95,7 @@ test('health endpoints are unauthenticated and report application readiness', as
 test('customer APIs return calculated summaries, details, and a 404 for unknown IDs', async () => {
   const list = await request('/api/customers');
   assert.equal(list.response.status, 200);
-  assert.equal(list.body.length, 12);
+  assert.equal(list.body.length, 13);
 
   const customer = list.body.find(row => row.ID === 'C001');
   assert.ok(customer);
@@ -96,6 +104,7 @@ test('customer APIs return calculated summaries, details, and a 404 for unknown 
   assert.equal(customer.utilisation, 1.2);
   assert.equal(customer.utilisationPercent, 120);
   assert.equal(customer.status, 'BREACH');
+  assert.equal(customer.flags.includes('CRITICAL'), true);
 
   const detail = await request('/api/customers/C001');
   assert.equal(detail.response.status, 200);
@@ -103,9 +112,65 @@ test('customer APIs return calculated summaries, details, and a 404 for unknown 
   assert.equal(detail.body.openItems.length, 3);
   assert.equal(detail.body.openItems.find(item => item.ID === 'I001').isOverdue, true);
 
+  const paymentHistory = await request('/api/customers/C001/payments');
+  assert.equal(paymentHistory.response.status, 200);
+  assert.equal(paymentHistory.body.length, 1);
+  assert.equal(paymentHistory.body[0].reference, 'PAY-2026-1001');
+  assert.equal(paymentHistory.body[0].currency, 'INR');
+
+  const noPayments = await request('/api/customers/NO-SUCH-CUSTOMER/payments');
+  assert.equal(noPayments.response.status, 404);
+
   const missing = await request('/api/customers/NO-SUCH-CUSTOMER');
   assert.equal(missing.response.status, 404);
   assert.match(missing.body.error, /was not found/i);
+});
+
+test('offline assistant grounds portfolio analysis in monitoring findings and prepares human-reviewed proposals', async () => {
+  const beforeRun = await postJson('/api/chat', {
+    message: 'Analyze the latest monitoring run and explain the high-risk customers.'
+  });
+  assert.equal(beforeRun.response.status, 200);
+  assert.match(beforeRun.body.reply, /No monitoring run is available/i);
+  assert.match(beforeRun.body.reply, /No monitoring results were invented/i);
+
+  const started = await postJson('/api/monitoring/runs', {}, 'monitor');
+  assert.equal(started.response.status, 202);
+  let run = started.body;
+  for (let attempt = 0; attempt < 200 && ['QUEUED', 'RUNNING'].includes(run.status); attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 25));
+    const response = await request(`/api/monitoring/runs/${run.id}`);
+    run = response.body;
+  }
+  assert.equal(run.status, 'COMPLETED');
+
+  const analysis = await postJson('/api/chat', {
+    message: 'Analyze the latest monitoring run and explain the high-risk customers.'
+  });
+  assert.equal(analysis.response.status, 200);
+  assert.equal(analysis.body.offline, true);
+  assert.match(analysis.body.reply, /Northstar Components \(C013\)/);
+  assert.match(analysis.body.reply, /Aarav Components \(C001\)/);
+  assert.match(analysis.body.reply, /C001\): CRITICAL/);
+  assert.match(analysis.body.reply, /C013\): HIGH/);
+  assert.match(analysis.body.reply, /13 customers/);
+  assert.match(analysis.body.reply, /12 overdue invoices/);
+  assert.match(analysis.body.reply, /available 3865000\.00/);
+  assert.match(analysis.body.reply, /no credit limit, posting, alert, or business transaction was changed/i);
+  const analysisStep = analysis.body.execution.steps.find(step => step.tool === 'get_monitoring_analysis');
+  assert.ok(analysisStep);
+  assert.match(analysisStep.summary, /CAP database/);
+  assert.doesNotMatch(analysisStep.summary, /ABAP/);
+
+  const proposal = await postJson('/api/chat', {
+    message: 'Prepare a credit limit request for C003 to INR 1,200,000 because renewed supply contract.'
+  }, 'requester');
+  assert.equal(proposal.response.status, 200);
+  assert.equal(proposal.body.preparedActions.length, 1);
+  assert.equal(proposal.body.preparedActions[0].customerId, 'C003');
+  assert.equal(proposal.body.preparedActions[0].requestedLimit, 1_200_000);
+  assert.match(proposal.body.reply, /has not been submitted or applied/i);
+  assert.equal((await request('/api/limit-requests?status=Pending')).body.length, 0);
 });
 
 test('API requires a CAP-authenticated identity and enforces reader/requester roles', async () => {
@@ -447,7 +512,7 @@ test('OData requires reader scope and rejects generic writes', async () => {
 
   const visible = await request('/odata/v4/credit/Customers', { identity: 'reader' });
   assert.equal(visible.response.status, 200);
-  assert.equal(visible.body.value.length, 12);
+  assert.equal(visible.body.value.length, 13);
 
   const blockedUpdate = await request('/odata/v4/credit/Customers/C001', {
     method: 'PATCH',

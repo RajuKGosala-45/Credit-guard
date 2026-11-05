@@ -44,12 +44,21 @@ async function getCustomerDetail(db, user, customerId) {
   return { ...customer, openItems: analysis.itemAnalysis };
 }
 
+async function getCustomerPayments(db, user, customerId) {
+  requireRole(user, ['CreditReader']);
+  const customer = (await db.run(SELECT.one.from('credit.Customers').where({ ID: customerId }))) || null;
+  if (!customer) return null;
+  return db.run(SELECT.from('credit.Payments')
+    .where({ customer_ID: customer.ID })
+    .orderBy('postingDate desc'));
+}
+
 function aggregateExposure(records, key) {
   const grouped = new Map();
-  const currencies = new Set(records.map(customer => customer.currency || 'INR'));
+  const currencies = new Set(records.map(customer => requireCurrency(customer.currency)));
   for (const customer of records) {
     const label = customer[key];
-    const currency = customer.currency || 'INR';
+    const currency = requireCurrency(customer.currency);
     const groupKey = `${label}\u0000${currency}`;
     const row = grouped.get(groupKey) || {
       label: currencies.size > 1 ? `${label} (${currency})` : label,
@@ -77,8 +86,10 @@ function aggregateExposure(records, key) {
 
 function aggregatePortfolio(customers) {
   const grouped = new Map();
+  const availableByCurrency = new Map();
+  const overdueByCurrency = new Map();
   for (const customer of customers) {
-    const currency = customer.currency || 'INR';
+    const currency = requireCurrency(customer.currency);
     const row = grouped.get(currency) || { currency, totalExposure: 0, totalLimit: 0 };
     row.totalExposure += customer.exposure;
     row.totalLimit += customer.creditLimit;
@@ -86,10 +97,21 @@ function aggregatePortfolio(customers) {
       throw new TypeError(`Portfolio totals for ${currency} are invalid.`);
     }
     grouped.set(currency, row);
+    const available = availableByCurrency.get(currency) || 0n;
+    availableByCurrency.set(
+      currency,
+      available + amountToMinorUnits(customer.creditLimit) - amountToMinorUnits(customer.exposure)
+    );
+    overdueByCurrency.set(
+      currency,
+      (overdueByCurrency.get(currency) || 0n) + amountToMinorUnits(customer.overdueAmount || 0)
+    );
   }
   const currencyTotals = [...grouped.values()].map(row => ({
     ...row,
-    overallUtilisation: row.totalLimit ? row.totalExposure / row.totalLimit : null
+    overallUtilisation: row.totalLimit ? row.totalExposure / row.totalLimit : null,
+    availableCredit: formatMinorUnits(availableByCurrency.get(row.currency) || 0n),
+    overdueAmount: formatMinorUnits(overdueByCurrency.get(row.currency) || 0n)
   }));
   if (currencyTotals.some(row =>
     row.overallUtilisation !== null && !Number.isFinite(row.overallUtilisation))) {
@@ -100,8 +122,11 @@ function aggregatePortfolio(customers) {
       : { totalExposure: null, totalLimit: null, overallUtilisation: null };
   const kpis = {
     ...totals,
+    availableCredit: currencyTotals.length === 1 ? currencyTotals[0].availableCredit : null,
     customersBreached: customers.filter(item => item.status === 'BREACH').length,
     warningCustomers: customers.filter(item => item.status === 'WARNING').length,
+    criticalCustomers: customers.filter(item => item.flags.includes('CRITICAL')).length,
+    overdueInvoiceCount: customers.reduce((count, item) => count + (item.overdueInvoiceCount || 0), 0),
     manualReviewCustomers: customers.filter(item => item.status === 'MANUAL_REVIEW').length,
     overdueRiskCustomers: customers.filter(item => item.flags.includes('OVERDUE_RISK')).length,
     healthyCustomers: customers.filter(item => item.status === 'HEALTHY').length,
@@ -109,6 +134,26 @@ function aggregatePortfolio(customers) {
   };
   if (currencyTotals.length > 1) kpis.currencyTotals = currencyTotals;
   return kpis;
+}
+
+function amountToMinorUnits(value) {
+  const amount = String(value);
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.exec(amount);
+  if (!match) throw new TypeError('Portfolio amount cannot be represented as currency minor units.');
+  return BigInt(match[1]) * 100n + BigInt((match[2] || '').padEnd(2, '0'));
+}
+
+function requireCurrency(value) {
+  if (typeof value !== 'string' || !/^[A-Z]{3}$/.test(value)) {
+    throw new TypeError('Portfolio currency is missing or invalid; currencies cannot be assumed or combined.');
+  }
+  return value;
+}
+
+function formatMinorUnits(value) {
+  const sign = value < 0n ? '-' : '';
+  const absolute = value < 0n ? -value : value;
+  return `${sign}${absolute / 100n}.${String(absolute % 100n).padStart(2, '0')}`;
 }
 
 async function listLimitRequests(db, user, status) {
@@ -254,10 +299,12 @@ async function getApprovalHistory(db, user, requestId) {
 module.exports = {
   aggregateExposure,
   aggregatePortfolio,
+  amountToMinorUnits,
   createLimitRequest,
   decideLimitRequest,
   getApprovalHistory,
   getCustomerDetail,
+  getCustomerPayments,
   getCustomerSummaries,
   listLimitRequests,
   prepareLimitChange

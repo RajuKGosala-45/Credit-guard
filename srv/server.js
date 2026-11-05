@@ -17,6 +17,14 @@ const {
   recoverMonitoringRun
 } = require('./monitoringService');
 const { startMonitoringWorker } = require('./monitoringWorker');
+const { ENTITY_TYPES, isValidTimestamp } = require('./canonicalData');
+const { createConfiguredIngestionRuntime } = require('./ingestionRuntime');
+const {
+  getSource,
+  listSources,
+  registerSource,
+  updateSource
+} = require('./sourceRegistryStore');
 const {
   getMonitoringAlert,
   getMonitoringRun,
@@ -28,6 +36,10 @@ const {
   listMonitoringRuns,
   transitionMonitoringAlert
 } = require('./monitoringStore');
+const {
+  getIngestionRun,
+  listIngestionIssues
+} = require('./ingestionStore');
 const {
   MEMORY_ENABLED,
   clearAgentHistory,
@@ -121,6 +133,66 @@ function validateScheduledFor(value) {
   return scheduledFor.toISOString();
 }
 
+function validateIngestionRunRequest(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+    || Object.keys(body).some(key => !['entityTypes', 'idempotencyKey', 'since'].includes(key))) {
+    throw new TypeError('Ingestion request contains unsupported fields.');
+  }
+  if (!Array.isArray(body.entityTypes) || body.entityTypes.length === 0
+    || body.entityTypes.some(entity => !ENTITY_TYPES.includes(entity))
+    || new Set(body.entityTypes).size !== body.entityTypes.length) {
+    throw new TypeError('Ingestion entity scope is invalid.');
+  }
+  if (body.idempotencyKey !== undefined
+    && (typeof body.idempotencyKey !== 'string' || !body.idempotencyKey.trim()
+      || body.idempotencyKey.length > 160 || /[\u0000-\u001f\u007f]/.test(body.idempotencyKey))) {
+    throw new TypeError('Ingestion idempotency key is invalid.');
+  }
+  if (body.since !== undefined
+    && !isValidTimestamp(body.since)) {
+    throw new TypeError('Ingestion watermark is invalid.');
+  }
+  return {
+    entityTypes: body.entityTypes,
+    ...(body.idempotencyKey !== undefined ? { idempotencyKey: body.idempotencyKey } : {}),
+    ...(body.since !== undefined ? { since: body.since } : {})
+  };
+}
+
+function queryInteger(value, label, defaultValue, maximum) {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== 'string' || !/^(0|[1-9]\d*)$/.test(value)) {
+    throw new TypeError(`${label} must be a non-negative whole number.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > maximum) {
+    throw new TypeError(`${label} is outside the permitted range.`);
+  }
+  return parsed;
+}
+
+function publicIngestionRun(run, issues = [], duplicate = false, issuesTruncated = false) {
+  let rowCounts = null;
+  try { rowCounts = run.rowCounts ? JSON.parse(run.rowCounts) : null; }
+  catch { rowCounts = null; }
+  return {
+    id: run.ID,
+    sourceId: run.sourceId,
+    status: run.status,
+    decisionEligible: run.decisionEligible === true,
+    snapshotPromoted: run.snapshotPromoted === true,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt || null,
+    retrievedAt: run.retrievedAt || null,
+    sourceTimestamp: run.sourceTimestamp || null,
+    rowCounts,
+    errorCategory: run.errorCategory || null,
+    issues,
+    issuesTruncated,
+    duplicate
+  };
+}
+
 cds.on('bootstrap', app => {
   app.get('/health/live', (_req, res) => res.status(200).json({ status: 'live' }));
   app.get('/health/ready', (_req, res) => {
@@ -133,6 +205,128 @@ cds.on('bootstrap', app => {
   app.use('/api', cds.middlewares.before);
   app.use('/api', express.json());
   app.use('/api', requireAuthenticatedUser);
+
+  app.get('/api/ingestion/sources', requireRole('CreditAdmin'), async (_req, res) => {
+    try {
+      return res.json(await listSources(cds.db));
+    } catch {
+      return res.status(500).json({ error: 'Source registry is unavailable.' });
+    }
+  });
+
+  app.post('/api/ingestion/sources', requireRole('CreditAdmin'), async (req, res) => {
+    try {
+      const source = await registerSource(cds.db, req.body);
+      return res.status(201).json(source);
+    } catch (error) {
+      const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
+      return res.status(status).json({
+        error: status < 500 ? error.message : 'Source registration could not be completed.'
+      });
+    }
+  });
+
+  app.put('/api/ingestion/sources/:sourceId', requireRole('CreditAdmin'), async (req, res) => {
+    try {
+      const sourceId = req.params.sourceId;
+      const current = await getSource(cds.db, sourceId);
+      if (!current) return res.status(404).json({ error: 'Source was not found.' });
+      const source = await updateSource(cds.db, sourceId, req.body);
+      return res.json(source);
+    } catch (error) {
+      const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
+      return res.status(status).json({
+        error: status < 500 ? error.message : 'Source update could not be completed.'
+      });
+    }
+  });
+
+  app.get('/api/ingestion/sources/:sourceId/status', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const source = await getSource(cds.db, req.params.sourceId);
+      if (!source) return res.status(404).json({ error: 'Source was not found.' });
+      const provider = createPortfolioDataProvider({ db: cds.db, user: currentUser(req) });
+      const entities = await Promise.all(source.supportedEntities.map(async entityType => ({
+        entityType,
+        ...(await provider.getIngestionSnapshot(source.sourceId, entityType, { includeRecords: false }))
+      })));
+      return res.json({
+        sourceId: source.sourceId,
+        enabled: source.enabled,
+        entities
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 500)
+        .json({ error: error.statusCode ? error.message : 'Ingestion status is unavailable.' });
+    }
+  });
+
+  app.get('/api/ingestion/sources/:sourceId/snapshots/:entityType', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const limit = queryInteger(req.query.limit, 'Snapshot limit', 1000, 1000);
+      if (limit === 0) throw new TypeError('Snapshot limit must be positive.');
+      const offset = queryInteger(req.query.offset, 'Snapshot offset', 0, 1000000000);
+      const source = await getSource(cds.db, req.params.sourceId);
+      if (!source) return res.status(404).json({ error: 'Source was not found.' });
+      if (!ENTITY_TYPES.includes(req.params.entityType)
+        || !source.supportedEntities.includes(req.params.entityType)) {
+        return res.status(400).json({ error: 'Canonical entity is not supported by this source.' });
+      }
+      const provider = createPortfolioDataProvider({ db: cds.db, user: currentUser(req) });
+      const snapshot = await provider.getIngestionSnapshot(source.sourceId, req.params.entityType, {
+        limit,
+        offset
+      });
+      return snapshot ? res.json(snapshot) : res.status(404).json({ error: 'No ingestion run is available.' });
+    } catch (error) {
+      const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
+      return res.status(status).json({
+        error: status < 500 ? error.message : 'Canonical snapshot is unavailable.'
+      });
+    }
+  });
+
+  app.get('/api/ingestion/runs/:runId', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const run = await getIngestionRun(cds.db, req.params.runId);
+      if (!run) return res.status(404).json({ error: 'Ingestion run was not found.' });
+      const issueRows = await listIngestionIssues(cds.db, run.ID);
+      return res.json(publicIngestionRun(
+        run,
+        issueRows.slice(0, 500),
+        false,
+        issueRows.length > 500
+      ));
+    } catch {
+      return res.status(500).json({ error: 'Ingestion run details are unavailable.' });
+    }
+  });
+
+  app.post('/api/ingestion/sources/:sourceId/runs', requireRole('CreditAdmin'), async (req, res) => {
+    try {
+      const request = validateIngestionRunRequest(req.body);
+      const ingestionRuntime = createConfiguredIngestionRuntime({ db: cds.db });
+      const result = await ingestionRuntime.run({
+        user: currentUser(req),
+        sourceId: req.params.sourceId,
+        ...request
+      });
+      const issueRows = await listIngestionIssues(cds.db, result.run.ID);
+      return res.status(200)
+        .json(publicIngestionRun(
+          result.run,
+          issueRows.slice(0, 500),
+          result.duplicate,
+          issueRows.length > 500
+        ));
+    } catch (error) {
+      const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
+      return res.status(status).json({
+        error: status < 500 ? error.message : 'Ingestion could not be completed safely.',
+        ...(error.runId ? { runId: error.runId, errorCategory: error.category } : {})
+      });
+    }
+  });
 
   app.get('/api/dashboard', requireRole('CreditReader'), async (_req, res) => {
     try {
@@ -331,6 +525,20 @@ cds.on('bootstrap', app => {
     } catch (error) {
       return res.status(error.statusCode || (error instanceof TypeError ? 422 : 500))
         .json({ error: error.statusCode ? error.message : 'Customer details are unavailable.' });
+    }
+  });
+
+  app.get('/api/customers/:id/payments', requireRole('CreditReader'), async (req, res) => {
+    try {
+      if ((process.env.CREDIT_GUARD_AGENT_DATA_SOURCE || 'local') !== 'local') {
+        return res.status(503).json({ error: 'Payment history is unavailable for the configured customer source.' });
+      }
+      const payments = await creditService.getCustomerPayments(cds.db, currentUser(req), req.params.id);
+      if (!payments) return res.status(404).json({ error: `Customer ${req.params.id} was not found.` });
+      return res.json(payments);
+    } catch (error) {
+      return res.status(error.statusCode || 500)
+        .json({ error: error.statusCode ? error.message : 'Customer payment history is unavailable.' });
     }
   });
 

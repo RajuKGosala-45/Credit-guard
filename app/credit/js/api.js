@@ -2,6 +2,11 @@ const CSRF_TOKEN_ENDPOINT = '/credit/index.html';
 let csrfToken;
 let csrfTokenPromise;
 
+function isLoopbackHost() {
+  const hostname = globalThis.location?.hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
 function isFormData(body) {
   return typeof FormData !== 'undefined' && body instanceof FormData;
 }
@@ -39,6 +44,7 @@ async function acquireCsrfToken() {
   }
   const token = response.headers.get('X-CSRF-Token');
   if (!token || ['fetch', 'required'].includes(token.toLowerCase())) {
+    if (isLoopbackHost()) return undefined;
     throw new Error('Credit Guard could not establish a secure browser session. Reload the page and try again.');
   }
   await response.text();
@@ -68,7 +74,7 @@ async function request(path, options = {}) {
   if (!isFormData(options.body) && !headers.has('content-type')) {
     headers.set('content-type', 'application/json');
   }
-  if (stateChanging) headers.set('X-CSRF-Token', token);
+  if (stateChanging && token) headers.set('X-CSRF-Token', token);
 
   const response = await fetchSameOrigin(path, {
     ...options,
@@ -114,6 +120,7 @@ export const resolveMonitoringAlert = id => request(
 );
 export const getCustomers = () => request('/api/customers');
 export const getCustomer = id => request(`/api/customers/${encodeURIComponent(id)}`);
+export const getCustomerPayments = id => request(`/api/customers/${encodeURIComponent(id)}/payments`);
 export const getLimitRequests = status => request(`/api/limit-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`);
 export const createLimitRequest = payload => request('/api/limit-requests', { method: 'POST', body: JSON.stringify(payload) });
 export const decideLimitRequest = (id, payload) => request(`/api/limit-requests/${encodeURIComponent(id)}/decision`, { method: 'POST', body: JSON.stringify(payload) });

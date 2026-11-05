@@ -35,12 +35,14 @@ test('exposure includes unpaid invoices and sales orders but excludes closed ite
   assert.equal(result.overdueAmount, 75);
 });
 
-test('utilisation and primary status use the agreed boundaries', () => {
+test('warning, breach, and critical classifications use inclusive demo thresholds', () => {
   assert.equal(classifyAtUtilisation(0).utilisation, 0);
   assert.equal(classifyAtUtilisation(0.7999).status, 'HEALTHY');
   assert.equal(classifyAtUtilisation(0.8).status, 'WARNING');
-  assert.equal(classifyAtUtilisation(1).status, 'WARNING');
+  assert.equal(classifyAtUtilisation(1).status, 'BREACH');
   assert.equal(classifyAtUtilisation(1.0001).status, 'BREACH');
+  assert.equal(classifyAtUtilisation(1.1999).flags.includes('CRITICAL'), false);
+  assert.equal(classifyAtUtilisation(1.2).flags.includes('CRITICAL'), true);
   assert.equal(classifyAtUtilisation(0.8).utilisationPercent, 80);
   assert.equal(classifyAtUtilisation(1).utilisationPercent, 100);
 });
@@ -67,6 +69,17 @@ test('overdue amount is based on due date and unpaid credit-consuming status', (
 
   assert.equal(result.exposure, 90);
   assert.equal(result.overdueAmount, 40);
+});
+
+test('overdue invoice count uses due dates and excludes sales orders and paid items', () => {
+  const result = classifyCustomer(customer(1000), [
+    item(40, 'Open', { ID: 'I001', dueDate: '2025-01-14' }),
+    item(30, 'Open', { ID: 'S001', type: 'SalesOrder', dueDate: '2025-01-14' }),
+    item(20, 'Paid', { ID: 'I002', dueDate: '2025-01-14' }),
+    item(10, 'Open', { ID: 'I003', dueDate: '2025-01-15' })
+  ], new Date('2025-01-15T00:00:00.000Z'));
+
+  assert.equal(result.overdueInvoiceCount, 1);
 });
 
 test('overdue risk uses a strict greater-than 30 percent boundary', () => {

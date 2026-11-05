@@ -14,9 +14,10 @@ function renderCounts(summary, activeAlertCount) {
   const values = [
     ['Customers monitored', counts.customersMonitored || 0],
     ['Warning', counts.warningCustomers || 0],
-    ['Above limit', counts.breachedCustomers || 0],
+    ['At/over limit', counts.breachedCustomers || 0],
     ['Critical', counts.criticalCustomers || 0],
     ['Overdue', counts.overdueCustomers || 0],
+    ['Overdue invoices', counts.overdueInvoiceCount || 0],
     ['Active alerts', activeAlertCount || 0]
   ];
   document.querySelector('#monitoring-kpis').innerHTML = values.map(([label, count]) =>
@@ -34,9 +35,10 @@ function renderAlerts(alerts, canOperate) {
     <article class="monitoring-alert">
       <div>
         <span class="chip ${statusClass(alert.severity)}">${escapeHTML(alert.severity)}</span>
+        <span class="chip ${statusClass(alert.status)}">${escapeHTML(alert.status)}</span>
         <strong>${escapeHTML(alert.customerName)}</strong>
         <span>${escapeHTML(alert.conditionKey.replaceAll('_', ' ').toLowerCase())}</span>
-        <p class="muted">${escapeHTML(formatPercent(alert.utilisation))} utilisation · ${escapeHTML(formatMoney(alert.overdueAmount, alert.currency || 'INR'))} overdue · last seen ${escapeHTML(dateTime(alert.lastSeenAt))}</p>
+        <p class="muted">${escapeHTML(formatPercent(alert.utilisation))} utilisation · ${escapeHTML(formatMoney(alert.overdueAmount, alert.currency))} overdue · last seen ${escapeHTML(dateTime(alert.lastSeenAt))}</p>
       </div>
       ${canOperate ? `<div class="monitoring-actions">
         ${alert.status === 'ACTIVE' ? `<button class="button secondary" type="button" data-alert-action="acknowledge" data-alert-id="${escapeHTML(alert.ID)}">Acknowledge</button>` : ''}
@@ -57,10 +59,10 @@ function renderFindings(findings) {
       <td>${escapeHTML(finding.customerName)} (${escapeHTML(finding.customer_ID)})</td>
       <td><span class="chip ${statusClass(finding.severity)}">${escapeHTML(finding.severity)}</span></td>
       <td>${escapeHTML((finding.conditions || []).join(', ').replaceAll('_', ' '))}</td>
-      <td>${escapeHTML(formatMoney(finding.exposure, finding.currency || 'INR'))}</td>
-      <td>${escapeHTML(formatMoney(finding.creditLimit, finding.currency || 'INR'))}</td>
+      <td>${escapeHTML(formatMoney(finding.exposure, finding.currency))}</td>
+      <td>${escapeHTML(formatMoney(finding.creditLimit, finding.currency))}</td>
       <td>${escapeHTML(formatPercent(finding.utilisation))}</td>
-      <td>${escapeHTML(formatMoney(finding.overdueAmount, finding.currency || 'INR'))}</td>
+      <td>${escapeHTML(formatMoney(finding.overdueAmount, finding.currency))}</td>
     </tr>`).join('')}
   </tbody></table>`;
 }
@@ -90,8 +92,12 @@ export function renderMonitoring({ summary, runs, alerts, findings }) {
   document.querySelector('#run-monitoring').hidden = !canOperate;
   renderCounts(runSummary, summary.activeAlertCount);
   document.querySelector('#monitoring-status').textContent = latest
-    ? `Latest run ${latest.status} · ${latest.source || 'source unavailable'} · retrieved ${dateTime(latest.retrievedAt)} · source freshness ${latest.freshness || 'unknown'} · last successful ${dateTime(summary.lastSuccessfulAt)}`
+    ? `Latest run ${latest.status} · ${latest.source || 'source unavailable'} · retrieved ${dateTime(latest.retrievedAt)} · source freshness ${latest.freshness || 'UNKNOWN'} · last successful ${dateTime(summary.lastSuccessfulAt)}`
     : 'No monitoring run is available yet.';
+  document.querySelector('#monitoring-error').textContent = latest
+    && ['FAILED', 'PARTIAL', 'STALE'].includes(latest.status)
+    ? `Latest monitoring run is ${latest.status.toLowerCase()}${latest.errorCategory ? ` (${latest.errorCategory})` : ''}. Review source availability and freshness before relying on findings.`
+    : '';
   document.querySelector('#monitoring-advisory').textContent = latest?.advisorySummary
     || 'Run monitoring to see a deterministic portfolio summary.';
   document.querySelector('#monitoring-advisory-source').textContent = latest?.advisorySource === 'AI_ADVISORY'

@@ -5,10 +5,12 @@ entity Customers {
       name           : String(100);
       country        : String(40);
       companyCode    : String(4);
+      currency       : String(3);
       creditLimit    : Decimal(15, 2);
       riskClass      : String(1);
       lastReviewDate : Date;
       openItems      : Composition of many OpenItems on openItems.customer = $self;
+      payments       : Composition of many Payments on payments.customer = $self;
       requests       : Composition of many LimitRequests on requests.customer = $self;
 }
 
@@ -17,8 +19,19 @@ entity OpenItems {
       customer    : Association to Customers;
       type        : String(20);
       amount      : Decimal(15, 2);
+      currency    : String(3);
       dueDate     : Date;
       status      : String(10);
+}
+
+entity Payments {
+  key ID          : String(12);
+      customer    : Association to Customers;
+      reference   : String(40);
+      amount      : Decimal(15, 2);
+      currency    : String(3);
+      postingDate : Date;
+      status      : String(16);
 }
 
 entity LimitRequests {
@@ -96,6 +109,83 @@ entity AgentExecutionSteps {
       attempt       : Integer;
       outcome       : String(24);
       errorCategory : String(40);
+}
+
+entity DataSources {
+  key sourceId              : String(64);
+      sourceName            : String(120) not null;
+      sourceType            : String(32) not null;
+      enabled               : Boolean not null default false;
+      supportedEntities     : LargeString not null;
+      mappingVersion        : String(32) not null;
+      authenticationReference: String(160);
+      configurationReference: String(160) not null;
+      createdAt             : Timestamp not null;
+      updatedAt             : Timestamp not null;
+}
+
+@assert.unique.ingestionIdempotency: [idempotencyKey]
+entity IngestionRuns {
+  key ID                  : UUID;
+      idempotencyKey      : String(160) not null;
+      sourceId            : String(64) not null;
+      status              : String(32) not null;
+      decisionEligible    : Boolean not null default false;
+      snapshotPromoted    : Boolean not null default false;
+      startedAt           : Timestamp not null;
+      completedAt         : Timestamp;
+      retrievedAt         : Timestamp;
+      sourceTimestamp     : Timestamp;
+      triggeredBy         : String(100) not null;
+      attemptCount        : Integer not null default 0;
+      rowCounts           : LargeString;
+      errorCategory       : String(40);
+}
+
+@assert.unique.canonicalRunIdentity: [sourceId, sourceEntity, sourceRecordId, ingestionRun_ID]
+entity CanonicalRecords {
+  key ID                  : UUID;
+      sourceId            : String(64) not null;
+      entityType          : String(32) not null;
+      sourceEntity        : String(120) not null;
+      sourceRecordId      : String(256) not null;
+      sourceValues        : LargeString not null;
+      sourceUpdatedAt     : Timestamp;
+      retrievedAt         : Timestamp not null;
+      ingestedAt          : Timestamp not null;
+      ingestionRun_ID     : UUID not null;
+      mappingVersion      : String(32) not null;
+      canonicalData       : LargeString not null;
+      active              : Boolean not null default false;
+}
+
+entity IngestionQualityIssues {
+  key ID                  : UUID;
+      ingestionRun_ID     : UUID not null;
+      code                : String(64) not null;
+      severity            : String(12) not null;
+      entityType          : String(32);
+      sourceRecordId      : String(256);
+      field               : String(120);
+      message             : String(500) not null;
+      createdAt           : Timestamp not null;
+}
+
+entity IngestionCheckpoints {
+  key sourceId            : String(64);
+  key entityType          : String(32);
+      cursor              : LargeString;
+      sourceTimestamp     : Timestamp;
+      ingestionRun_ID     : UUID;
+      updatedAt           : Timestamp not null;
+}
+
+entity IngestionSourceLocks {
+  key sourceId            : String(64);
+      run_ID              : UUID;
+      lockToken           : String(36);
+      leaseUntil          : Timestamp not null;
+      updatedAt           : Timestamp not null;
 }
 
 @assert.unique.runSlot: [slotKey]

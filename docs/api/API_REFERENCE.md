@@ -11,6 +11,33 @@ Browser state-changing requests go through the shared frontend API helper. With 
 | GET | `/health/live` | Anonymous | Process liveness. |
 | GET | `/health/ready` | Anonymous | Checks whether the CAP database handle is available. |
 
+## Universal ingestion
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/api/ingestion/sources` | `CreditAdmin` | List registered source metadata and opaque references. |
+| POST | `/api/ingestion/sources` | `CreditAdmin` | Register a source; accepts metadata and references only. |
+| PUT | `/api/ingestion/sources/:sourceId` | `CreditAdmin` | Update source metadata, including its enabled state. |
+| GET | `/api/ingestion/sources/:sourceId/status` | `CreditReader` | Report latest run and active snapshot status per supported entity. |
+| GET | `/api/ingestion/sources/:sourceId/snapshots/:entityType?limit=N&offset=N` | `CreditReader` | Read a bounded page of canonical records, provenance, source freshness, and decision eligibility. `limit` is 1-1000; `offset` is non-negative. |
+| POST | `/api/ingestion/sources/:sourceId/runs` | `CreditAdmin` | Run an approved source synchronously and record the outcome. |
+| GET | `/api/ingestion/runs/:runId` | `CreditReader` | Read a run outcome and up to 500 quality issues. `issuesTruncated` indicates more issues exist. |
+
+Refresh body:
+
+```json
+{
+  "entityTypes": ["CUSTOMER"],
+  "idempotencyKey": "caller-generated-request-id"
+}
+```
+
+Only `entityTypes`, `idempotencyKey`, and optional ISO `since` are accepted. Endpoint URLs, hostnames, database service names, SQL, file paths, and credentials are not request fields. Configuration is resolved server-side from `cds.requires.creditGuardIngestion.sources` using the registered `configurationReference`. A source with no trusted mapping/configuration is recorded as `FAILED`; it is not treated as an empty successful result. Responses and logs do not include upstream credentials or raw exception bodies.
+
+Run outcomes are `SUCCEEDED`, `SUCCEEDED_WITH_WARNINGS`, `PARTIAL`, or `FAILED`. Only complete, non-empty snapshots are promoted. Missing or stale source timestamps disable decision eligibility. Failed, partial, conflicting, or empty retrievals preserve the previous active snapshot. If a connector accepts an incremental `since`, that retrieval is recorded as `PARTIAL` and is not promoted until merge and deletion semantics are configured; connectors without incremental support fail explicitly. `sourceTimestamp` is not inferred from retrieval time.
+
+The configured SAP adapter reuses the existing read-only ABAP client and currently exposes only its customer collection to canonical ingestion. Existing destination configuration does not verify connectivity or source-field mapping. CSV, JSON, and flat XML are supported through an approved repository resolver; XLSX fails explicitly unless an approved parser is supplied. Canonical snapshots are not yet selected by dashboard, agent, or monitoring reads.
+
 ## Portfolio and customer reads
 
 These endpoints require `CreditReader`.
@@ -20,8 +47,9 @@ These endpoints require `CreditReader`.
 | GET | `/api/dashboard` | `kpis` and exposure groupings by country, company code, and customer. Currency totals are separated where needed. |
 | GET | `/api/customers` | Customer summaries with exposure, overdue amount/share, utilization, flags, and status. |
 | GET | `/api/customers/:id` | One summary plus open items annotated with whether they consume credit and are overdue. |
+| GET | `/api/customers/:id/payments` | Payment history records for the selected local demo customer, including their source status. |
 
-In local profiles these endpoints use the CAP database. When `CREDIT_GUARD_AGENT_DATA_SOURCE=abap`, dashboard and customer reads use the configured ABAP provider, keeping them aligned with monitoring. Response shapes are retained; ABAP-backed responses include source and retrieval metadata.
+In local profiles these endpoints use the CAP database. Demo records explicitly identify INR and are labelled simulated in the UI. When `CREDIT_GUARD_AGENT_DATA_SOURCE=abap`, dashboard and customer reads use the configured ABAP provider, keeping them aligned with monitoring; local demo payment history is not shown for ABAP-backed customer records. ABAP-backed responses include source and retrieval metadata.
 
 ## Credit monitoring
 
@@ -41,6 +69,8 @@ In local profiles these endpoints use the CAP database. When `CREDIT_GUARD_AGENT
 | POST | `/api/monitoring/alerts/:id/resolve` | `CreditMonitor` or `CreditAdmin` | Manually resolve an alert. |
 
 Monitoring statuses include `QUEUED`, `RUNNING`, `COMPLETED`, `PARTIAL`, `STALE`, and `FAILED`. Poll `GET /api/monitoring/runs/:id` for status and terminal results. The durable worker claims persisted jobs with a database lease; a portfolio-wide lock prevents overlapping scans. Freshness is `UNKNOWN` unless the upstream source supplies a data timestamp; retrieval time alone is not represented as source-data freshness. Findings use the existing deterministic credit rules. Optional AI text is an aggregate-only advisory and is not a decision or a new risk score.
+
+The local demo requires an authorized user to run monitoring manually; no recurring run is claimed. The Credit Assistant can read the latest persisted monitoring findings and provide grounded control recommendations. Offline mode uses deterministic wording over those findings and does not change limits, submit requests, or create financial postings.
 
 Automatic alert resolution requires a `COMPLETED`, complete, non-empty snapshot with verified `FRESH` source data. Unknown or stale freshness, partial or failed runs, and empty portfolios preserve active and acknowledged alerts. Monitoring operators can still resolve alerts manually.
 

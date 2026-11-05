@@ -7,6 +7,8 @@ service CreditService {
   @readonly
   entity OpenItems as projection on credit.OpenItems;
   @readonly
+  entity Payments as projection on credit.Payments;
+  @readonly
   entity LimitRequests as projection on credit.LimitRequests;
   @readonly
   entity ApprovalHistory as projection on credit.ApprovalHistory;

@@ -141,11 +141,15 @@ function classifyCustomer(customer, items, now = new Date(), includeItemAnalysis
   const flags = [];
   const overdueRisk = calculated.exposure > 0
     && calculated.overdueAmount / calculated.exposure > CONFIG.overdueShare;
+  const overdueInvoiceCount = calculated.itemAnalysis.filter(item =>
+    item.creditConsuming && item.isOverdue && String(item.type).toUpperCase() === 'INVOICE'
+  ).length;
 
   if (creditLimit === 0) flags.push('NO_LIMIT');
-  if (creditLimit > 0 && calculated.exposure > creditLimit) flags.push('BREACH');
-  if (utilisation !== null && utilisation > CONFIG.criticalUtilisation) flags.push('CRITICAL');
-  else if (utilisation !== null && utilisation >= CONFIG.warningUtilisation) flags.push('WARNING');
+  if (creditLimit > 0 && calculated.exposure >= creditLimit) flags.push('BREACH');
+  if (utilisation !== null && utilisation >= CONFIG.criticalUtilisation) flags.push('CRITICAL');
+  else if (utilisation !== null && utilisation >= CONFIG.warningUtilisation
+    && calculated.exposure < creditLimit) flags.push('WARNING');
   if (overdueRisk) flags.push('OVERDUE_RISK');
   if (reviewDate && reviewDate < staleDate.toISOString().slice(0, 10)) flags.push('STALE_REVIEW');
 
@@ -156,11 +160,12 @@ function classifyCustomer(customer, items, now = new Date(), includeItemAnalysis
     exposure: calculated.exposure,
     overdueAmount: calculated.overdueAmount,
     overdueShare: calculated.exposure > 0 ? calculated.overdueAmount / calculated.exposure : 0,
+    overdueInvoiceCount,
     utilisation,
     utilisationPercent: utilisation === null ? null : utilisation * 100,
     flags,
     status: creditLimit === 0 ? 'MANUAL_REVIEW'
-      : calculated.exposure > creditLimit ? 'BREACH'
+      : calculated.exposure >= creditLimit ? 'BREACH'
         : utilisation >= CONFIG.warningUtilisation ? 'WARNING' : 'HEALTHY'
   };
   if (includeItemAnalysis) result.itemAnalysis = calculated.itemAnalysis;

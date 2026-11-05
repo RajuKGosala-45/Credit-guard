@@ -2,7 +2,7 @@
 
 ## Implemented behavior
 
-`srv/agent.js` provides an `AgentController` and validated tool registry. Tools cover customer lookup, utilization-threshold listing, exposure grouping, request listing, proposal preparation, and optional read-only ABAP customer analysis.
+`srv/agent.js` provides an `AgentController` and validated tool registry. Tools cover customer lookup, utilization-threshold listing, exposure grouping, persisted monitoring analysis, request listing, proposal preparation, and optional read-only ABAP customer analysis.
 
 The controller uses Anthropic to create a structured task plan, validates it against the server-owned tool registry, and executes validated tasks sequentially. The default global limits remain six model calls, twelve tool invocations, and a 20-second overall timeout. Tool inputs are checked server-side and tool permissions are derived from the current CAP user at execution time. Portfolio calculations come from the deterministic rules and credit service, not model-generated financial arithmetic.
 
@@ -26,9 +26,11 @@ Execution progress and safe summaries are stored for authenticated users. Conver
 
 The document route extracts PDF, DOCX, or UTF-8 TXT text in memory. The upload is limited to 10 MiB and model context to 20,000 characters. Document text is untrusted input. When an LLM provider is configured, chat and extracted content may be sent to that provider.
 
-## Not implemented
+## Monitoring integration and operational boundaries
 
-There is no autonomous scheduler, background monitor, outbound alert service, vector database/RAG pipeline, or autonomous business-action execution. Planning is limited to one bounded request and the existing registered tools.
+The read-only monitoring workflow persists runs, deterministic findings, in-app alerts, and run history. The `get_monitoring_analysis` tool reads the latest persisted monitoring result and grounds its portfolio summary and customer recommendations in those findings. Offline mode can answer monitoring questions from that saved result; it does not invent a run when none is available. The tool does not change limits, submit requests, or create financial postings.
+
+The application includes a background monitoring worker and a protected scheduled-run trigger. The MTA declares a Job Scheduler binding, but a recurring job, interval, OAuth configuration, and service-role assignment require external provisioning and have not been verified. No outbound alert delivery provider is configured. There is no vector database/RAG pipeline or autonomous business-action execution. Planning remains limited to one bounded request and the registered tools.
 
 ## Orchestration planning contract — Phase 1
 

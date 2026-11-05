@@ -39,7 +39,33 @@ test('portfolio KPI totals do not combine currencies', () => {
   assert.equal(kpis.totalLimit, null);
   assert.equal(kpis.overallUtilisation, null);
   assert.deepEqual(kpis.currencyTotals.map(row => row.currency).sort(), ['EUR', 'INR']);
+  assert.deepEqual(kpis.currencyTotals.map(row => row.availableCredit).sort(), ['20.00', '60.00']);
   assert.equal(JSON.stringify(kpis).includes('Infinity'), false);
+});
+
+test('available credit preserves decimal precision without combining currencies', () => {
+  const portfolio = aggregatePortfolio([{
+    currency: 'INR',
+    exposure: 0.1,
+    creditLimit: 0.3,
+    overdueAmount: 0.1,
+    overdueInvoiceCount: 1,
+    status: 'WARNING',
+    flags: ['WARNING']
+  }]);
+
+  assert.equal(portfolio.availableCredit, '0.20');
+  assert.equal(portfolio.overdueAmount, '0.10');
+  assert.equal(portfolio.overdueInvoiceCount, 1);
+});
+
+test('portfolio totals fail explicitly when currency is absent', () => {
+  assert.throws(() => aggregatePortfolio([{
+    exposure: 100,
+    creditLimit: 200,
+    status: 'HEALTHY',
+    flags: []
+  }]), /currency is missing/i);
 });
 
 test('zero-limit currency groups have null utilization rather than infinity', () => {

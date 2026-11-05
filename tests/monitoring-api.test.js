@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startCapServer, stopCapServer } = require('./support/cap-server');
+const { latestMonitoringRun, latestSuccessfulMonitoringRun } = require('../srv/monitoringStore');
 
 let server;
 
@@ -36,6 +37,13 @@ async function waitForTerminalRun(runId) {
   }
   throw new Error(`Monitoring run ${runId} did not reach a terminal state.`);
 }
+
+test('latest monitoring lookups normalize empty single-row results', async () => {
+  const emptyDb = { async run() { return []; } };
+
+  assert.equal(await latestMonitoringRun(emptyDb), null);
+  assert.equal(await latestSuccessfulMonitoringRun(emptyDb), null);
+});
 
 test('monitoring routes enforce reader, operator, and scheduler identities', async () => {
   const anonymousReadPaths = [
@@ -79,8 +87,10 @@ test('monitoring routes enforce reader, operator, and scheduler identities', asy
   assert.ok(['QUEUED', 'RUNNING'].includes(manual.body.status));
   manual.body = (await waitForTerminalRun(manual.body.id)).body;
   assert.equal(manual.body.status, 'COMPLETED');
-  assert.equal(manual.body.summary.customersMonitored, 12);
-  assert.equal(manual.body.summary.breachedCustomers, 2);
+  assert.equal(manual.body.summary.customersMonitored, 13);
+  assert.equal(manual.body.summary.breachedCustomers, 3);
+  assert.equal(manual.body.summary.criticalCustomers, 1);
+  assert.equal(manual.body.summary.overdueInvoiceCount, 12);
   assert.equal(manual.body.source, 'CAP database');
   assert.equal(manual.body.freshness, 'UNKNOWN');
   assert.equal(Object.hasOwn(manual.body, 'triggeredBy'), false);
@@ -165,6 +175,10 @@ test('monitoring findings and alerts are persisted, deduplicated, and auditable'
   first.body = (await waitForTerminalRun(first.body.id)).body;
   const firstAlerts = await request('/api/monitoring/alerts');
   assert.ok(firstAlerts.body.length > 0);
+  const alertConditions = new Set(firstAlerts.body.map(alert => alert.conditionKey));
+  for (const condition of ['WARNING', 'BREACH', 'CRITICAL', 'OVERDUE_RISK']) {
+    assert.ok(alertConditions.has(condition), `expected a ${condition} alert`);
+  }
 
   const details = await request(`/api/monitoring/runs/${first.body.id}`, { identity: 'monitor' });
   assert.equal(details.response.status, 200);

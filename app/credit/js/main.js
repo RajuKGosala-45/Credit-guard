@@ -19,7 +19,7 @@ function refreshPortfolio() {
   renderExposure(state.dashboard, state.exposureGroup);
   renderCustomers(state.customers);
   renderRequestCustomers(state.customers);
-  document.querySelector('#last-updated').textContent = new Intl.DateTimeFormat('en-IN', { timeStyle: 'short' }).format(new Date());
+  document.querySelector('#last-updated').textContent = 'UNKNOWN';
 }
 
 async function loadPortfolio() {
@@ -50,20 +50,25 @@ document.querySelector('#refresh-monitoring').addEventListener('click', () =>
   loadMonitoring().catch(error => showError(error.message)));
 document.querySelector('#run-monitoring').addEventListener('click', async event => {
   const button = event.currentTarget;
+  const error = document.querySelector('#monitoring-error');
   button.disabled = true;
+  error.textContent = '';
   try {
     const run = await api.runMonitoring();
-    await loadMonitoring();
+    let completed = run;
     if (run.status === 'QUEUED' || run.status === 'RUNNING') {
-      await api.waitForMonitoringRun(run.id, {
+      completed = await api.waitForMonitoringRun(run.id, {
         onStatus: current => {
           document.querySelector('#monitoring-status').textContent =
             `Monitoring run ${current.status.toLowerCase()} · waiting for a terminal result.`;
         }
       });
-      await loadMonitoring();
     }
+    await loadMonitoring();
+    if (completed.status === 'COMPLETED') await loadPortfolio();
+    else error.textContent = `Monitoring ended with status ${completed.status}${completed.errorCategory ? ` (${completed.errorCategory})` : ''}.`;
   } catch (error) {
+    document.querySelector('#monitoring-error').textContent = error.message;
     showError(error.message);
   } finally {
     button.disabled = false;
@@ -100,7 +105,7 @@ document.querySelector('.segmented').addEventListener('click', event =>
 
 document.querySelector('#customer-list').addEventListener('click', async event => {
   try {
-    const action = await handleCustomerClick(event, api.getCustomer);
+    const action = await handleCustomerClick(event, api.getCustomer, api.getCustomerPayments);
     if (action?.explainId) {
       const customer = state.customers.find(item => item.ID === action.explainId);
       if (customer) {
@@ -135,6 +140,11 @@ document.querySelector('#approvals-list').addEventListener('click', async event 
 
 document.querySelector('#chat-form').addEventListener('submit', event =>
   handleChatSubmit(event, api.sendChat, state.chatMessages, state.documentContext, state));
+document.querySelector('#analyze-portfolio').addEventListener('click', () => {
+  const input = document.querySelector('#chat-input');
+  input.value = 'Analyze the latest monitoring run, explain each high-risk customer, and summarize portfolio exposure and overdue invoices.';
+  document.querySelector('#chat-form').requestSubmit();
+});
 document.querySelector('#agent-activity').addEventListener('click', async event => {
   const button = event.target.closest('[data-submit-proposal]');
   if (!button) return;

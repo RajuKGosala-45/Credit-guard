@@ -3,9 +3,10 @@ const inr = new Intl.NumberFormat('en-IN', {
 });
 
 export const formatINR = value => Number.isFinite(Number(value)) ? inr.format(Number(value)) : 'No limit';
-export const formatMoney = (value, currency = 'INR') => {
+export const formatMoney = (value, currency) => {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return '—';
+  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) return 'Currency unavailable';
   return new Intl.NumberFormat('en-IN', {
     style: 'currency', currency, maximumFractionDigits: 0
   }).format(amount);

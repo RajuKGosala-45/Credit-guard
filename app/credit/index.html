@@ -16,12 +16,12 @@
     <a class="brand" href="./index.html" aria-label="Credit Guard home">
       <span class="brand-mark">CG</span><span><strong>Credit Guard</strong><small>BLUSPRING ENTERPRISES</small></span>
     </a>
-    <div class="header-meta">INR · Synthetic demo data</div>
+    <div class="header-meta">DEMO DATA · Simulated local INR · No live SAP data</div>
   </header>
   <main class="page-shell">
     <section class="page-intro">
-      <div><p class="eyebrow">RISK &amp; RECEIVABLES</p><h1>Credit overview</h1><p class="muted">Monitor customer exposure across five legal entities.</p></div>
-      <div class="header-meta">Updated <span id="last-updated">—</span></div>
+      <div><p class="eyebrow">RISK &amp; RECEIVABLES · SIMULATED DEMO</p><h1>Credit overview</h1><p class="muted">Review a controlled portfolio across five legal entities. Data freshness is not supplied by this local demo.</p></div>
+      <div class="header-meta">Data freshness <span id="last-updated">UNKNOWN</span></div>
     </section>
     <section id="kpis" class="kpi-grid" aria-label="Credit portfolio KPIs"></section>
     <nav class="tabs" aria-label="Workspace sections">
@@ -32,13 +32,15 @@
     <section id="dashboard-panel" class="tab-panel active">
       <section class="card monitoring-card" aria-labelledby="monitoring-heading">
         <div class="card-heading">
-          <div><p class="eyebrow">AUTOMATED CREDIT MONITORING</p><h2 id="monitoring-heading">Monitoring status</h2></div>
+          <div><p class="eyebrow">MANUAL CREDIT MONITORING</p><h2 id="monitoring-heading">Monitoring status</h2></div>
           <div class="document-actions">
             <button id="refresh-monitoring" class="button secondary" type="button">Refresh monitoring</button>
-            <button id="run-monitoring" class="button primary" type="button" hidden>Run now</button>
+            <button id="run-monitoring" class="button primary" type="button" hidden>Run monitoring</button>
           </div>
         </div>
+        <p class="muted">Deterministic demo rules: warning at 80%, breached at 100%, critical at 120%. Overdue status is based on invoice due dates. Monitoring runs only when an authorized operator starts it.</p>
         <p id="monitoring-status" class="muted" role="status">No monitoring run is available yet.</p>
+        <p id="monitoring-error" class="form-message error" role="alert"></p>
         <div id="monitoring-kpis" class="kpi-grid monitoring-kpis"></div>
         <section class="monitoring-advisory">
           <h3>Risk summary</h3>
@@ -96,7 +98,7 @@
     </section>
     <section id="chat-panel" class="tab-panel">
       <section class="card chat-card">
-        <div class="card-heading"><div><p class="eyebrow">AI CREDIT CONTROL</p><h2>Credit assistant</h2></div><span class="offline-label">Tool-assisted · human approval required</span></div>
+        <div class="card-heading"><div><p class="eyebrow">AI CREDIT CONTROL · DEMO RECORDS</p><h2>Credit assistant</h2></div><div class="document-actions"><span class="offline-label">Tool-assisted · human approval required</span><button id="analyze-portfolio" class="button secondary" type="button">Analyze latest monitoring run</button></div></div>
         <form id="document-form" class="document-upload">
           <div><p class="document-title">Analyze a document</p><p class="muted">Upload a PDF, DOCX, or UTF-8 TXT (max 10 MB). Text is extracted for analysis and is not saved.</p></div>
           <label for="document-file">Choose document<input id="document-file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" required></label>

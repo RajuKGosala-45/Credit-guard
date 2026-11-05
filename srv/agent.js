@@ -5,6 +5,10 @@ const { createLlmProvider } = require('./llm');
 const { AbapClient, validateCustomerId } = require('./integrations/abap/client');
 const { createAgentCustomerProvider } = require('./integrations/abap/customer-provider');
 const {
+  latestMonitoringRun,
+  listMonitoringFindings
+} = require('./monitoringStore');
+const {
   MAX_PLAN_TASKS,
   PLAN_VERSION,
   validatePlan,
@@ -26,6 +30,7 @@ const READ_ONLY_TOOLS = new Set([
   'list_customers_over_threshold',
   'get_customer',
   'exposure_by',
+  'get_monitoring_analysis',
   'list_limit_requests'
 ]);
 
@@ -38,6 +43,7 @@ const toolDefinitions = [
   { name: 'list_customers_over_threshold', description: 'List customers at or above a utilization threshold, with deterministic credit rules applied.', input_schema: { type: 'object', properties: { min_utilisation: { type: 'number', minimum: 0, maximum: 10 } }, required: ['min_utilisation'] } },
   { name: 'get_customer', description: 'Get customer details, calculated exposure, utilization, overdue amounts, risk flags, and open items.', input_schema: { type: 'object', properties: { customer_id: { type: 'string', maxLength: 12 } }, required: ['customer_id'] } },
   { name: 'exposure_by', description: 'Summarize exposure and credit limits by country, companyCode, or customer.', input_schema: { type: 'object', properties: { group: { type: 'string', enum: ['country', 'companyCode', 'customer'] } }, required: ['group'] } },
+  { name: 'get_monitoring_analysis', description: 'Retrieve the latest persisted monitoring execution, deterministic portfolio totals, and customer findings for grounded risk analysis.', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'list_limit_requests', description: 'List limit requests by status.', input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['Pending', 'Approved', 'Rejected'] } }, required: ['status'] } },
   { name: 'prepare_limit_change', description: 'Prepare and validate a credit-limit request for explicit user confirmation. This tool never submits, approves, or changes a limit.', input_schema: { type: 'object', properties: { customer_id: { type: 'string', maxLength: 12 }, new_limit: { type: 'number', exclusiveMinimum: 0 }, reason: { type: 'string', maxLength: 500 } }, required: ['customer_id', 'new_limit', 'reason'] } }
 ];
@@ -51,6 +57,7 @@ const toolPermissions = Object.freeze({
   list_customers_over_threshold: ['CreditReader'],
   get_customer: ['CreditReader'],
   exposure_by: ['CreditReader'],
+  get_monitoring_analysis: ['CreditReader'],
   list_limit_requests: ['CreditReader'],
   prepare_limit_change: ['CreditRequester', 'CreditAnalyst', 'CreditManager', 'CreditAdmin']
 });
@@ -64,6 +71,7 @@ const toolOutputs = Object.freeze({
   list_customers_over_threshold: 'Array of customer summaries calculated by srv/rules.js.',
   get_customer: 'One customer summary and its open items.',
   exposure_by: 'Array of grouped exposure and credit-limit totals.',
+  get_monitoring_analysis: 'The latest completed monitoring run, deterministic portfolio totals, and persisted customer findings.',
   list_limit_requests: 'Array of limit requests for the selected status.',
   prepare_limit_change: 'A validated proposal marked as requiring explicit human confirmation.'
 });
@@ -208,6 +216,9 @@ function taskSummary(task, results, failed = false) {
       ? 'Retrieved deterministic customer exposure and open-item analysis.'
       : `Retrieved deterministic details for ${results.length} customers.`;
   }
+  if (task.toolName === 'get_monitoring_analysis') {
+    return `Retrieved ${results[0].findings.length} persisted monitoring finding(s).`;
+  }
   if (task.toolName === 'prepare_limit_change') {
     return 'Prepared a validated proposal for explicit user confirmation.';
   }
@@ -267,6 +278,7 @@ function meetsCompletionCriteria(task, result) {
     list_customers_over_threshold: ['ID', 'utilisation', 'exposure', 'creditLimit'],
     get_customer: ['ID', 'utilisation', 'exposure', 'creditLimit', 'overdueAmount', 'flags', 'openItems'],
     exposure_by: ['label', 'exposure', 'creditLimit'],
+    get_monitoring_analysis: ['runId', 'status', 'summary', 'findings'],
     list_limit_requests: ['ID', 'status', 'customer_ID'],
     prepare_limit_change: ['requiresHumanApproval', 'proposal.customerId', 'proposal.requestedLimit']
   }[task.toolName];
@@ -442,6 +454,9 @@ function validateToolInput(name, input) {
         throw new TypeError('Exposure group must be country, companyCode, or customer.');
       }
       return input;
+    case 'get_monitoring_analysis':
+      assertObject(input, [], []);
+      return {};
     case 'list_limit_requests':
       assertObject(input, ['status'], []);
       if (input.status !== undefined && !['Pending', 'Approved', 'Rejected'].includes(input.status)) {
@@ -532,6 +547,49 @@ function createToolRegistry(db, user, {
       const key = group === 'companyCode' ? 'companyCode' : group === 'customer' ? 'name' : 'country';
       return creditService.aggregateExposure(records, key);
     },
+    get_monitoring_analysis: async () => {
+      const run = await latestMonitoringRun(db);
+      if (!run) {
+        const error = new Error('No monitoring run is available. Run monitoring before requesting a findings analysis.');
+        error.statusCode = 404;
+        throw error;
+      }
+      if (run.status !== 'COMPLETED' && run.status !== 'STALE') {
+        const error = new Error(`The latest monitoring run is ${run.status.toLowerCase()}. Wait for a completed run before analyzing findings.`);
+        error.statusCode = 409;
+        throw error;
+      }
+      let summary;
+      try { summary = JSON.parse(run.summary); }
+      catch {
+        const error = new Error('The latest monitoring run has no valid persisted portfolio summary.');
+        error.category = 'monitoring_result_invalid';
+        throw error;
+      }
+      return {
+        runId: run.ID,
+        status: run.status,
+        source: run.source,
+        retrievedAt: run.retrievedAt,
+        completedAt: run.completedAt,
+        sourceTimestamp: run.sourceTimestamp || null,
+        freshness: run.freshness || 'UNKNOWN',
+        summary,
+        findings: (await listMonitoringFindings(db, run.ID)).map(finding => ({
+          customerId: finding.customer_ID,
+          customerName: finding.customerName,
+          severity: finding.severity,
+          conditions: Array.isArray(finding.conditions)
+            ? finding.conditions : JSON.parse(finding.conditions),
+          exposure: finding.exposure,
+          creditLimit: finding.creditLimit,
+          utilisation: finding.utilisation,
+          overdueAmount: finding.overdueAmount,
+          overdueShare: finding.overdueShare,
+          currency: finding.currency || null
+        }))
+      };
+    },
     list_limit_requests: async ({ status = 'Pending' }) => creditService.listLimitRequests(db, user, status),
     prepare_limit_change: async input => {
       if (customerProvider.source === 'abap') {
@@ -570,9 +628,12 @@ function createToolRegistry(db, user, {
         const validated = validateToolInput(definition.name, input);
         const result = await handlers[definition.name](validated);
         if (result?.source && result?.retrievedAt) {
-          step.summary = `Read-only ABAP data retrieved at ${result.retrievedAt}.`;
+          const sourceLabel = result.source.slice(0, 120);
+          step.summary = /abap/i.test(sourceLabel)
+            ? `Read-only ABAP data retrieved at ${result.retrievedAt}.`
+            : `Read-only ${sourceLabel} monitoring results retrieved at ${result.retrievedAt}.`;
           onDataSource({
-            source: result.source,
+            source: sourceLabel,
             retrievedAt: result.retrievedAt,
             customerId: result.customer?.ID || result.analysis?.ID || result.customerId || null
           });
@@ -605,7 +666,7 @@ function recommendation(customer) {
   const manualReview = customer.status === 'MANUAL_REVIEW';
   const reasonable = customer.status === 'BREACH'
     && customer.overdueShare <= 0.3 && customer.riskClass !== 'C';
-  const currency = customer.currency || 'INR';
+  const currency = customer.currency || 'currency unavailable';
   const utilisation = manualReview ? 'manual review required; no limit'
     : `${(customer.utilisation * 100).toFixed(1)}%`;
   const recommendationText = manualReview ? 'Manual review is required before considering any limit action'
@@ -616,6 +677,71 @@ function recommendation(customer) {
     : customer.overdueShare > 0.3 ? 'overdue exposure is elevated'
       : customer.riskClass === 'C' ? 'risk class C is high risk' : 'more headroom may be needed';
   return `${customer.name} (${customer.ID}) has ${currency} ${Math.round(customer.exposure).toLocaleString('en-IN')} exposure against ${currency} ${Math.round(customer.creditLimit).toLocaleString('en-IN')} limit (${utilisation}). Risk class ${customer.riskClass || 'not provided'}; overdue share ${(customer.overdueShare * 100).toFixed(1)}%. Flags: ${customer.flags.join(', ') || 'none'}. ${recommendationText} given utilization, overdue share and risk. Recommend ${action} because ${reason}.`;
+}
+
+function formatMonitoringAnalysis(analysis) {
+  const summary = analysis.summary;
+  const currencyTotals = summary.currencyTotals || [];
+  const totals = currencyTotals.length
+    ? currencyTotals.map(item =>
+      `${item.currency}: exposure ${item.totalExposure}, limit ${item.totalLimit}, available ${item.availableCredit}`
+    ).join('; ')
+    : 'Currency-specific portfolio totals are unavailable.';
+  const findings = analysis.findings.map(finding => {
+    const conditions = finding.conditions || [];
+    const reasons = [];
+    const actions = [];
+    if (conditions.includes('CRITICAL')) {
+      reasons.push('utilization is at or above the deterministic 120% critical threshold');
+      actions.push('urgent credit-controller review and validate the exposure before any further limit decision');
+    } else if (conditions.includes('BREACH')) {
+      reasons.push('exposure is at or above the credit limit');
+      actions.push('credit-control review and apply the client’s approved hold policy if applicable');
+    } else if (conditions.includes('WARNING')) {
+      reasons.push('utilization is at or above the deterministic 80% warning threshold');
+      actions.push('review upcoming orders and collection plans');
+    }
+    if (conditions.includes('OVERDUE_RISK') || conditions.includes('OVERDUE_AMOUNT')) {
+      reasons.push(`${finding.overdueAmount} ${finding.currency || 'currency unavailable'} is overdue`);
+      actions.push('reconcile open invoices and follow up with collections');
+    }
+    if (conditions.includes('NO_LIMIT')) {
+      reasons.push('no credit limit is configured');
+      actions.push('obtain an authorized limit review before extending credit');
+    }
+    if (conditions.includes('STALE_REVIEW')) {
+      reasons.push('the credit review date is stale');
+      actions.push('schedule a human credit review');
+    }
+    const reason = reasons.length ? reasons.join('; ') : 'monitoring flagged this customer for review';
+    const action = actions.length ? [...new Set(actions)].join('; ') : 'review the stored finding';
+    const utilization = finding.utilisation === null || finding.utilisation === undefined
+      ? 'not available' : `${(finding.utilisation * 100).toFixed(1)}%`;
+    return `${finding.customerName} (${finding.customerId}): ${finding.severity}; ${reason}. Exposure ${finding.exposure} / limit ${finding.creditLimit} ${finding.currency || ''} (${utilization}); overdue ${finding.overdueAmount}. Recommended control: ${action}.`;
+  });
+  return [
+    `Monitoring run ${analysis.runId} is ${analysis.status}; source ${analysis.source || 'unknown'}; source freshness ${analysis.freshness}.`,
+    `Portfolio reviewed ${summary.customersMonitored} customers: ${summary.warningCustomers} approaching limits, ${summary.breachedCustomers} at/above limits, ${summary.criticalCustomers} critical, and ${summary.overdueCustomers} with overdue balances (${summary.overdueInvoiceCount} overdue invoices).`,
+    `Portfolio totals by currency: ${totals}.`,
+    findings.length ? `Customer findings:\n${findings.join('\n')}` : 'No customer findings were stored for this run.',
+    'These are evidence-based control recommendations only. Thresholds come from deterministic Credit Guard rules; no credit limit, posting, alert, or business transaction was changed.'
+  ].join('\n\n');
+}
+
+function parseLimitProposal(message) {
+  if (!/\b(?:prepare|propose|request)\b/i.test(message)
+    || !/\b(?:credit[- ]limit|limit change|limit increase|limit request)\b/i.test(message)) return null;
+  const customerId = message.match(/\bC\d{3,11}\b/i)?.[0]?.toUpperCase();
+  const amountMatch = message.match(/\b(?:to|of)\s*(?:INR\s*)?([\d,]+(?:\.\d{1,2})?)\b/i);
+  const reason = message.match(/\bbecause\s+(.+)$/i)?.[1]?.trim();
+  if (!customerId || !amountMatch || !reason) {
+    return { clarification: 'To prepare a proposal, provide the exact customer ID, requested limit, and business reason using “because …”.' };
+  }
+  const requestedLimit = Number(amountMatch[1].replaceAll(',', ''));
+  if (!Number.isFinite(requestedLimit)) {
+    return { clarification: 'Enter a valid requested limit; no proposal was prepared.' };
+  }
+  return { customerId, requestedLimit, reason };
 }
 
 async function offlineReply(message, tools, documentContext) {
@@ -646,11 +772,35 @@ async function offlineReply(message, tools, documentContext) {
         ? '\n[Excerpt shortened; the full extracted text is available for follow-up questions.]' : '';
     return `Document analysis: ${documentContext.filename}\nExtracted ${documentContext.extractedCharacters} characters.\n\nCustomer matches:\n${customerFindings}\n\nExtracted text:\n${excerpt}${truncated}\n\nThis is an offline extraction-based analysis, not a document verification or credit decision. (Offline demo mode)`;
   }
+  const proposalRequest = parseLimitProposal(message);
+  if (proposalRequest) {
+    if (proposalRequest.clarification) return `${proposalRequest.clarification} No request or limit change was made. (Offline demo mode)`;
+    const result = await tools.prepare_limit_change({
+      customer_id: proposalRequest.customerId,
+      new_limit: proposalRequest.requestedLimit,
+      reason: proposalRequest.reason
+    });
+    return {
+      reply: `Prepared a proposal for ${result.proposal.customerName} (${result.proposal.customerId}) to change the limit from ${result.proposal.currentLimit} to ${result.proposal.requestedLimit}. It has not been submitted or applied. An authorized human must submit and decide it. (Offline demo mode)`,
+      preparedActions: [result.proposal]
+    };
+  }
   if (/abap/i.test(message)) {
     const id = message.match(/\bC\d{1,}\b/i);
     if (!id) throw new TypeError('Include the exact customer identifier to analyze ABAP data.');
     const result = await tools.analyzeAbapCreditRisk({ customerId: id[0].toUpperCase() });
     return formatAbapAnalysis(result);
+  }
+  if (!/\bC\d{3}\b/i.test(message)
+    && /monitoring|portfolio|risk|overdue|analy[sz]e|high.?risk/i.test(message)) {
+    try {
+      return formatMonitoringAnalysis(await tools.get_monitoring_analysis({})) + ' (Offline demo mode)';
+    } catch (error) {
+      if (error.statusCode === 404 || error.statusCode === 409) {
+        return `${error.message} No monitoring results were invented. (Offline demo mode)`;
+      }
+      throw error;
+    }
   }
   const id = message.match(/\bC\d{3}\b/i);
   if (/customer|explain|recommend|flag|C\d{3}/i.test(message) && id) {
@@ -835,8 +985,10 @@ class AgentController {
       execution.providerErrorCategory = process.env.LLM_PROVIDER === 'offline'
         ? 'offline_configured'
         : 'provider_not_configured';
-      const reply = await offlineReply(message, tools, documentContext);
-      return { reply, offline: true };
+      const fallback = await offlineReply(message, tools, documentContext);
+      return typeof fallback === 'string'
+        ? { reply: fallback, offline: true }
+        : { ...fallback, offline: true };
     }
 
     const prompt = documentContext
@@ -871,8 +1023,10 @@ class AgentController {
       if (signal.aborted) throw signal.reason || error;
       execution.providerFallback = true;
       execution.providerErrorCategory = error.category || 'provider_error';
-      const reply = await offlineReply(message, tools, documentContext);
-      return { reply, offline: true, preparedActions: [] };
+      const fallback = await offlineReply(message, tools, documentContext);
+      return typeof fallback === 'string'
+        ? { reply: fallback, offline: true, preparedActions: [] }
+        : { ...fallback, offline: true };
     }
 
     const calls = planningResponse?.toolCalls || [];
