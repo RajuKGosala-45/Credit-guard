@@ -4,10 +4,20 @@ const creditService = require('./creditService');
 const { createLlmProvider } = require('./llm');
 const { AbapClient, validateCustomerId } = require('./integrations/abap/client');
 const { createAgentCustomerProvider } = require('./integrations/abap/customer-provider');
+const { assertCreditLimitWorkflowAvailable, getConfiguredDataSource } = require('./dataSource');
 const {
   latestMonitoringRun,
-  listMonitoringFindings
+  listMonitoringFindings,
+  listMonitoringAlerts,
+  listMonitoringAlertEvents
 } = require('./monitoringStore');
+const {
+  getLatestIngestionRun,
+  listIngestionIssues
+} = require('./ingestionStore');
+const { listSources } = require('./sourceRegistryStore');
+const { MOCK_SAP_SOURCE_ID } = require('./sourceRegistry');
+const mockSapFixture = require('./integrations/mock-sap/fixtures.json');
 const {
   MAX_PLAN_TASKS,
   PLAN_VERSION,
@@ -29,10 +39,130 @@ const READ_ONLY_TOOLS = new Set([
   'analyzeAbapCreditRisk',
   'list_customers_over_threshold',
   'get_customer',
+  'search_customers',
   'exposure_by',
   'get_monitoring_analysis',
-  'list_limit_requests'
+  'list_limit_requests',
+  'get_portfolio_summary',
+  'get_customer_approval_history',
+  'get_monitoring_alerts',
+  'get_data_ingestion_status',
+  'get_mock_sap_records',
+  'preview_credit_workflow'
 ]);
+
+const TOOL_MODULES = Object.freeze({
+  searchAbapCustomer: ['Customers'],
+  getAbapCustomerDetails: ['Customers', 'Invoices'],
+  getAbapCreditExposure: ['Customers', 'Invoices'],
+  getAbapOpenItems: ['Invoices'],
+  analyzeAbapCreditRisk: ['Customers', 'Invoices', 'Monitoring analysis'],
+  list_customers_over_threshold: ['Portfolio', 'Customers'],
+  search_customers: ['Customers'],
+  get_customer: ['Customers', 'Invoices', 'Payments'],
+  exposure_by: ['Portfolio', 'Dashboard'],
+  get_monitoring_analysis: ['Monitoring'],
+  list_limit_requests: ['Credit limit requests'],
+  get_portfolio_summary: ['Dashboard', 'Portfolio'],
+  get_customer_approval_history: ['Approvals', 'Credit limit requests'],
+  get_monitoring_alerts: ['Monitoring', 'Alerts', 'Monitoring events'],
+  get_data_ingestion_status: ['Data ingestion', 'Data sources', 'SAP Simulator'],
+  get_mock_sap_records: ['SAP Simulator'],
+  preview_credit_workflow: ['Workflow preview']
+});
+
+function isWorkflowCreationRequest(message) {
+  return /\bworkflow\b/i.test(message)
+    && /\b(?:create|design|build|set up|automate|draft|preview)\b/i.test(message);
+}
+
+function isSupportedRiskWorkflowRequest(message) {
+  return /\b(?:mock\s*sap|sap|extraction|extract|credit\s*risk|monitoring|alert\s*report)\b/i.test(message);
+}
+
+function workflowPreviewPlan() {
+  return {
+    objective: 'Preview the supported synthetic Mock SAP credit-risk review workflow.',
+    tasks: [{
+      taskId: 'workflow-preview',
+      description: 'Create a preview of the supported Mock SAP risk-review workflow; do not execute its steps.',
+      toolName: 'preview_credit_workflow',
+      toolInput: { workflow_id: WORKFLOW_PREVIEW.workflowId },
+      dependencies: [],
+      taskType: 'READ_ONLY',
+      completionCriteria: {
+        description: 'Return the complete validated workflow preview.',
+        requiredFields: ['workflowId', 'steps', 'executionAvailable']
+      }
+    }]
+  };
+}
+
+function executionProvenance(execution) {
+  const toolNames = new Set((execution.steps || [])
+    .filter(step => step.status === 'completed')
+    .map(step => step.tool));
+  const modulesUsed = [...new Set([...toolNames].flatMap(name => TOOL_MODULES[name] || []))]
+    .filter(module => module !== 'Workflow preview');
+  const dataSourcesUsed = [...new Map((execution.dataSources || [])
+    .map(source => [source.source, {
+      name: source.source,
+      retrievedAt: source.retrievedAt
+    }])).values()];
+  return { modulesUsed, dataSourcesUsed };
+}
+
+const WORKFLOW_PREVIEW = Object.freeze({
+  workflowId: 'mock_sap_risk_review',
+  name: 'Mock SAP credit-risk review',
+  source: 'Synthetic Mock SAP Simulator; not a live SAP connection.',
+  executionAvailable: false,
+  requiresHumanConfirmation: true,
+  status: 'PREVIEW_ONLY',
+  limitations: [
+    'Preview only: creating this plan does not extract data, run monitoring, or change business records.',
+    'Extraction requires a CreditAdmin operator; monitoring requires CreditMonitor or CreditAdmin.',
+    'No scheduling or unattended workflow runner is configured.'
+  ],
+  steps: [
+    {
+      stepId: 'extract',
+      module: 'SAP Simulator',
+      operation: 'POST /api/mock-sap/extract',
+      dependsOn: [],
+      requiredRoles: ['CreditAdmin'],
+      confirmation: 'Explicit authorized operator action',
+      expectedResult: 'A persisted ingestion run with actual validation counts and quality issues.'
+    },
+    {
+      stepId: 'validate',
+      module: 'Data Ingestion',
+      operation: 'Existing canonical validation and projection',
+      dependsOn: ['extract'],
+      requiredRoles: ['CreditAdmin'],
+      confirmation: 'Performed by the existing extraction operation',
+      expectedResult: 'Valid records projected using existing validation rules; invalid records remain reported as issues.'
+    },
+    {
+      stepId: 'monitor',
+      module: 'Credit Monitoring',
+      operation: 'POST /api/mock-sap/monitoring',
+      dependsOn: ['validate'],
+      requiredRoles: ['CreditMonitor', 'CreditAdmin'],
+      confirmation: 'Explicit authorized operator action',
+      expectedResult: 'Persisted deterministic monitoring run and findings.'
+    },
+    {
+      stepId: 'report',
+      module: 'Alerts and Monitoring',
+      operation: 'Read persisted monitoring findings and alert history',
+      dependsOn: ['monitor'],
+      requiredRoles: ['CreditReader'],
+      confirmation: 'Read-only',
+      expectedResult: 'A report based on actual persisted results; no notification is sent.'
+    }
+  ]
+});
 
 const toolDefinitions = [
   { name: 'searchAbapCustomer', description: 'Find one customer by the exact identifier in the configured ABAP Environment read-only service.', input_schema: { type: 'object', properties: { customerId: { type: 'string', maxLength: 12 } }, required: ['customerId'] } },
@@ -41,10 +171,17 @@ const toolDefinitions = [
   { name: 'getAbapOpenItems', description: 'Retrieve paginated, validated open-item data from the configured ABAP Environment service.', input_schema: { type: 'object', properties: { customerId: { type: 'string', maxLength: 12 } }, required: ['customerId'] } },
   { name: 'analyzeAbapCreditRisk', description: 'Perform deterministic Credit Guard analysis over validated ABAP data. The tool returns the authoritative calculated values, source, and retrieval timestamp.', input_schema: { type: 'object', properties: { customerId: { type: 'string', maxLength: 12 } }, required: ['customerId'] } },
   { name: 'list_customers_over_threshold', description: 'List customers at or above a utilization threshold, with deterministic credit rules applied.', input_schema: { type: 'object', properties: { min_utilisation: { type: 'number', minimum: 0, maximum: 10 } }, required: ['min_utilisation'] } },
+  { name: 'search_customers', description: 'Find a small set of customer identity matches by name or identifier; use get_customer for financial details.', input_schema: { type: 'object', properties: { query: { type: 'string', maxLength: 100 } }, required: ['query'] } },
   { name: 'get_customer', description: 'Get customer details, calculated exposure, utilization, overdue amounts, risk flags, and open items.', input_schema: { type: 'object', properties: { customer_id: { type: 'string', maxLength: 12 } }, required: ['customer_id'] } },
   { name: 'exposure_by', description: 'Summarize exposure and credit limits by country, companyCode, or customer.', input_schema: { type: 'object', properties: { group: { type: 'string', enum: ['country', 'companyCode', 'customer'] } }, required: ['group'] } },
   { name: 'get_monitoring_analysis', description: 'Retrieve the latest persisted monitoring execution, deterministic portfolio totals, and customer findings for grounded risk analysis.', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'list_limit_requests', description: 'List limit requests by status.', input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['Pending', 'Approved', 'Rejected'] } }, required: ['status'] } },
+  { name: 'get_portfolio_summary', description: 'Read the existing deterministic dashboard totals and exposure breakdowns from the configured customer source.', input_schema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_customer_approval_history', description: 'Retrieve Credit Guard limit requests and persisted human approval history for one customer.', input_schema: { type: 'object', properties: { customer_id: { type: 'string', maxLength: 12 } }, required: ['customer_id'] } },
+  { name: 'get_monitoring_alerts', description: 'Retrieve persisted monitoring alerts and their audit events by status. This tool is read-only.', input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['ACTIVE', 'ACKNOWLEDGED', 'RESOLVED', 'ALL'] } }, required: ['status'] } },
+  { name: 'get_data_ingestion_status', description: 'Read registered data-source metadata, latest extraction status, validation issues, and synthetic Mock SAP fixture counts without connector secrets or configuration references.', input_schema: { type: 'object', properties: { source_id: { type: 'string', maxLength: 64 } }, required: [] } },
+  { name: 'get_mock_sap_records', description: 'Read a bounded set of synthetic Mock SAP Simulator source records, optionally filtered to one customer. These are fixtures, not live SAP records.', input_schema: { type: 'object', properties: { entity_type: { type: 'string', enum: ['CUSTOMER', 'CREDIT_ACCOUNT', 'INVOICE', 'PAYMENT'] }, customer_id: { type: 'string', maxLength: 12 } }, required: ['entity_type'] } },
+  { name: 'preview_credit_workflow', description: 'Create a safe preview of the supported Mock SAP risk-review workflow. This never runs extraction, monitoring, approvals, notifications, or other actions.', input_schema: { type: 'object', properties: { workflow_id: { type: 'string', enum: ['mock_sap_risk_review'] } }, required: ['workflow_id'] } },
   { name: 'prepare_limit_change', description: 'Prepare and validate a credit-limit request for explicit user confirmation. This tool never submits, approves, or changes a limit.', input_schema: { type: 'object', properties: { customer_id: { type: 'string', maxLength: 12 }, new_limit: { type: 'number', exclusiveMinimum: 0 }, reason: { type: 'string', maxLength: 500 } }, required: ['customer_id', 'new_limit', 'reason'] } }
 ];
 
@@ -55,10 +192,17 @@ const toolPermissions = Object.freeze({
   getAbapOpenItems: ['CreditReader'],
   analyzeAbapCreditRisk: ['CreditReader'],
   list_customers_over_threshold: ['CreditReader'],
+  search_customers: ['CreditReader'],
   get_customer: ['CreditReader'],
   exposure_by: ['CreditReader'],
   get_monitoring_analysis: ['CreditReader'],
   list_limit_requests: ['CreditReader'],
+  get_portfolio_summary: ['CreditReader'],
+  get_customer_approval_history: ['CreditReader'],
+  get_monitoring_alerts: ['CreditReader'],
+  get_data_ingestion_status: ['CreditReader'],
+  get_mock_sap_records: ['CreditReader'],
+  preview_credit_workflow: ['CreditReader'],
   prepare_limit_change: ['CreditRequester', 'CreditAnalyst', 'CreditManager', 'CreditAdmin']
 });
 
@@ -69,10 +213,17 @@ const toolOutputs = Object.freeze({
   getAbapOpenItems: 'Validated open-item records with currency and retrieval timestamp.',
   analyzeAbapCreditRisk: 'Deterministic Credit Guard risk analysis, ABAP data source, and retrieval timestamp.',
   list_customers_over_threshold: 'Array of customer summaries calculated by srv/rules.js.',
-  get_customer: 'One customer summary and its open items.',
+  search_customers: 'A limited list of customer identity matches; financial analysis is retrieved separately through get_customer.',
+  get_customer: 'One customer summary, its open items, and local payment history when available.',
   exposure_by: 'Array of grouped exposure and credit-limit totals.',
   get_monitoring_analysis: 'The latest completed monitoring run, deterministic portfolio totals, and persisted customer findings.',
   list_limit_requests: 'Array of limit requests for the selected status.',
+  get_portfolio_summary: 'Authoritative dashboard totals and deterministic country/company-code exposure breakdowns.',
+  get_customer_approval_history: 'Credit Guard limit requests and persisted human decision history for one customer.',
+  get_monitoring_alerts: 'Persisted alert states and event history, with statuses from the Credit Guard monitoring store.',
+  get_data_ingestion_status: 'Safe source metadata and actual ingestion outcomes; connector authentication/configuration references are excluded.',
+  get_mock_sap_records: 'A bounded set of clearly labelled synthetic Mock SAP Simulator fixture records.',
+  preview_credit_workflow: 'A fixed, validated preview only; no extraction, monitoring, or notification operation is executed.',
   prepare_limit_change: 'A validated proposal marked as requiring explicit human confirmation.'
 });
 
@@ -204,6 +355,28 @@ function publicPlan(plan) {
 
 function taskSummary(task, results, failed = false) {
   if (failed) return 'The task could not be completed safely.';
+  if (task.toolName === 'preview_credit_workflow') {
+    const preview = results[0];
+    return `Created a preview-only workflow with ${preview.steps.length} ordered steps. No extraction, monitoring, notification, or financial action was executed.`;
+  }
+  if (task.toolName === 'get_portfolio_summary') {
+    return `Retrieved deterministic dashboard totals for ${results[0].portfolio.customerCount} customers.`;
+  }
+  if (task.toolName === 'get_customer_approval_history') {
+    return `Retrieved ${results[0].requests.length} limit request(s) and their persisted decision history for ${results[0].customerId}.`;
+  }
+  if (task.toolName === 'get_monitoring_alerts') {
+    return `Retrieved ${results[0].alerts.length} persisted ${results[0].status.toLowerCase()} alert(s) and their audit events.`;
+  }
+  if (task.toolName === 'get_data_ingestion_status') {
+    return `Retrieved status for ${results[0].sources.length} registered data source(s), including persisted extraction results.`;
+  }
+  if (task.toolName === 'get_mock_sap_records') {
+    return `Retrieved ${results[0].records.length} synthetic ${results[0].entityType.toLowerCase()} source record(s).`;
+  }
+  if (task.toolName === 'search_customers') {
+    return `Found ${results[0].length} customer identity match(es).`;
+  }
   if (task.toolName === 'list_customers_over_threshold') {
     return `Retrieved ${results[0].length} customer summaries from the configured utilization threshold.`;
   }
@@ -262,6 +435,7 @@ function executionSummary(execution, plan, taskResults = []) {
 function meetsCompletionCriteria(task, result) {
   const expectedArray = [
     'list_customers_over_threshold',
+    'search_customers',
     'exposure_by',
     'list_limit_requests'
   ].includes(task.toolName);
@@ -276,10 +450,17 @@ function meetsCompletionCriteria(task, result) {
     getAbapOpenItems: ['source', 'retrievedAt', 'customerId', 'openItems'],
     analyzeAbapCreditRisk: ['source', 'retrievedAt', 'analysis.ID', 'analysisBasis'],
     list_customers_over_threshold: ['ID', 'utilisation', 'exposure', 'creditLimit'],
+    search_customers: ['ID', 'name'],
     get_customer: ['ID', 'utilisation', 'exposure', 'creditLimit', 'overdueAmount', 'flags', 'openItems'],
     exposure_by: ['label', 'exposure', 'creditLimit'],
     get_monitoring_analysis: ['runId', 'status', 'summary', 'findings'],
     list_limit_requests: ['ID', 'status', 'customer_ID'],
+    get_portfolio_summary: ['source', 'retrievedAt', 'portfolio', 'exposureByCountry', 'exposureByCompanyCode'],
+    get_customer_approval_history: ['source', 'retrievedAt', 'customerId', 'requests'],
+    get_monitoring_alerts: ['source', 'retrievedAt', 'status', 'alerts'],
+    get_data_ingestion_status: ['source', 'retrievedAt', 'sources', 'syntheticMockSapFixture'],
+    get_mock_sap_records: ['source', 'retrievedAt', 'entityType', 'records'],
+    preview_credit_workflow: ['workflowId', 'steps', 'executionAvailable', 'requiresHumanConfirmation'],
     prepare_limit_change: ['requiresHumanApproval', 'proposal.customerId', 'proposal.requestedLimit']
   }[task.toolName];
   if (!structure || records.some(record => structure.some(field =>
@@ -442,6 +623,12 @@ function validateToolInput(name, input) {
         throw new TypeError('Utilization threshold must be a finite value between 0 and 10.');
       }
       return input;
+    case 'search_customers':
+      assertObject(input, ['query'], ['query']);
+      if (typeof input.query !== 'string' || !input.query.trim() || input.query.length > 100) {
+        throw new TypeError('Customer search must contain 1-100 characters.');
+      }
+      return { query: input.query.trim() };
     case 'get_customer':
       assertObject(input, ['customer_id'], ['customer_id']);
       if (typeof input.customer_id !== 'string' || !input.customer_id.trim() || input.customer_id.length > 12) {
@@ -463,6 +650,48 @@ function validateToolInput(name, input) {
         throw new TypeError('Request status is invalid.');
       }
       return input;
+    case 'get_portfolio_summary':
+      assertObject(input, [], []);
+      return {};
+    case 'get_customer_approval_history':
+      assertObject(input, ['customer_id'], ['customer_id']);
+      if (typeof input.customer_id !== 'string' || !input.customer_id.trim() || input.customer_id.length > 12) {
+        throw new TypeError('Customer ID must contain 1-12 characters.');
+      }
+      return { customer_id: input.customer_id.trim() };
+    case 'get_monitoring_alerts':
+      assertObject(input, ['status'], ['status']);
+      if (input.status !== undefined
+        && !['ACTIVE', 'ACKNOWLEDGED', 'RESOLVED', 'ALL'].includes(input.status)) {
+        throw new TypeError('Alert status is invalid.');
+      }
+      return { status: input.status || 'ACTIVE' };
+    case 'get_data_ingestion_status':
+      assertObject(input, ['source_id'], []);
+      if (input.source_id !== undefined
+        && (typeof input.source_id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(input.source_id))) {
+        throw new TypeError('Source ID is invalid.');
+      }
+      return input;
+    case 'get_mock_sap_records':
+      assertObject(input, ['entity_type', 'customer_id'], ['entity_type']);
+      if (!['CUSTOMER', 'CREDIT_ACCOUNT', 'INVOICE', 'PAYMENT'].includes(input.entity_type)) {
+        throw new TypeError('Mock SAP entity type is invalid.');
+      }
+      if (input.customer_id !== undefined
+        && (typeof input.customer_id !== 'string' || !input.customer_id.trim() || input.customer_id.length > 12)) {
+        throw new TypeError('Customer ID must contain 1-12 characters.');
+      }
+      return {
+        entity_type: input.entity_type,
+        ...(input.customer_id ? { customer_id: input.customer_id.trim() } : {})
+      };
+    case 'preview_credit_workflow':
+      assertObject(input, ['workflow_id'], ['workflow_id']);
+      if (input.workflow_id !== 'mock_sap_risk_review') {
+        throw new TypeError('The requested workflow preview is not supported.');
+      }
+      return input;
     case 'prepare_limit_change':
       assertObject(input, ['customer_id', 'new_limit', 'reason'], ['customer_id', 'new_limit', 'reason']);
       return input;
@@ -475,7 +704,7 @@ function createToolRegistry(db, user, {
   onStep = () => {},
   onDataSource = () => {},
   abapClient = new AbapClient(),
-  customerDataSource = process.env.CREDIT_GUARD_AGENT_DATA_SOURCE || 'local'
+  customerDataSource = getConfiguredDataSource()
 } = {}) {
   const customerProvider = createAgentCustomerProvider({
     db,
@@ -519,6 +748,27 @@ function createToolRegistry(db, user, {
           ...(source ? { source, retrievedAt } : {})
         }));
     },
+    search_customers: async ({ query }) => {
+      const records = await customerProvider.listCustomers();
+      const normalized = customerProvider.source === 'abap'
+        ? records.map(record => ({
+          ...record.analysis,
+          name: record.customer.name,
+          country: record.customer.country,
+          companyCode: record.customer.companyCode
+        }))
+        : records;
+      const search = query.toLocaleLowerCase();
+      return normalized
+        .filter(customer => customer.ID?.toLocaleLowerCase().includes(search)
+          || customer.name?.toLocaleLowerCase().includes(search))
+        .sort((left, right) => Number(right.ID?.toLocaleLowerCase() === search
+          || right.name?.toLocaleLowerCase() === search)
+          - Number(left.ID?.toLocaleLowerCase() === search
+            || left.name?.toLocaleLowerCase() === search))
+        .slice(0, 5)
+        .map(({ ID, name, country, companyCode }) => ({ ID, name, country, companyCode }));
+    },
     get_customer: async ({ customer_id }) => {
       if (customerProvider.source === 'abap') {
         const result = await customerProvider.getCustomer(customer_id);
@@ -532,7 +782,10 @@ function createToolRegistry(db, user, {
       }
       const customer = await customerProvider.getCustomer(customer_id);
       if (!customer) throw new Error(`Customer ${customer_id} was not found`);
-      return customer;
+      return {
+        ...customer,
+        payments: await creditService.getCustomerPayments(db, user, customer_id)
+      };
     },
     exposure_by: async ({ group }) => {
       if (customerProvider.source === 'abap') {
@@ -591,12 +844,161 @@ function createToolRegistry(db, user, {
       };
     },
     list_limit_requests: async ({ status = 'Pending' }) => creditService.listLimitRequests(db, user, status),
-    prepare_limit_change: async input => {
-      if (customerProvider.source === 'abap') {
-        const error = new Error('Credit-limit requests are disabled while agent reads use the read-only ABAP data source.');
-        error.statusCode = 403;
+    get_portfolio_summary: async () => {
+      const customers = await customerProvider.listCustomers();
+      const source = customerProvider.source === 'abap'
+        ? 'ABAP Environment via BTP Destination service'
+        : 'Credit Guard CAP database';
+      return {
+        source,
+        retrievedAt: new Date().toISOString(),
+        portfolio: creditService.aggregatePortfolio(customers),
+        exposureByCountry: creditService.aggregateExposure(customers, 'country'),
+        exposureByCompanyCode: creditService.aggregateExposure(customers, 'companyCode')
+      };
+    },
+    get_customer_approval_history: async ({ customer_id }) => {
+      const requests = (await creditService.listLimitRequests(db, user))
+        .filter(request => request.customer_ID === customer_id)
+        .slice(0, 20);
+      const history = await Promise.all(requests.map(async request => ({
+        requestId: request.ID,
+        status: request.status,
+        currentLimit: request.currentLimit,
+        requestedLimit: request.requestedLimit,
+        reason: request.reason,
+        requestedBy: request.requestedBy,
+        approverLevel: request.approverLevel,
+        createdAt: request.createdAt,
+        decidedBy: request.decidedBy || null,
+        decidedAt: request.decidedAt || null,
+        decisions: await creditService.getApprovalHistory(db, user, request.ID)
+      })));
+      return {
+        source: 'Credit Guard local limit-request and approval records',
+        retrievedAt: new Date().toISOString(),
+        customerId: customer_id,
+        requests: history
+      };
+    },
+    get_monitoring_alerts: async ({ status = 'ACTIVE' }) => {
+      const alerts = (await listMonitoringAlerts(db, status)).slice(0, 20);
+      const records = await Promise.all(alerts.map(async alert => ({
+        ID: alert.ID,
+        customerId: alert.customer_ID,
+        customerName: alert.customerName,
+        severity: alert.severity,
+        conditionKey: alert.conditionKey,
+        status: alert.status,
+        exposure: alert.exposure,
+        creditLimit: alert.creditLimit,
+        utilisation: alert.utilisation,
+        overdueAmount: alert.overdueAmount,
+        currency: alert.currency || null,
+        firstSeenAt: alert.firstSeenAt,
+        lastSeenAt: alert.lastSeenAt,
+        events: (await listMonitoringAlertEvents(db, alert.ID)).slice(-10).map(event => ({
+          action: event.eventType,
+          actorId: event.actor_ID,
+          createdAt: event.createdAt,
+          details: event.details || null
+        }))
+      })));
+      return {
+        source: 'Credit Guard monitoring and alert records',
+        retrievedAt: new Date().toISOString(),
+        status,
+        alerts: records
+      };
+    },
+    get_data_ingestion_status: async ({ source_id }) => {
+      const registered = await listSources(db);
+      const selected = source_id
+        ? registered.filter(source => source.sourceId === source_id)
+        : registered;
+      if (source_id && !selected.length) {
+        const error = new Error(`Data source ${source_id} was not found.`);
+        error.statusCode = 404;
         throw error;
       }
+      const sources = await Promise.all(selected.map(async source => {
+        const run = await getLatestIngestionRun(db, source.sourceId);
+        let rowCounts = {};
+        if (typeof run?.rowCounts === 'string') {
+          try { rowCounts = JSON.parse(run.rowCounts); }
+          catch { rowCounts = {}; }
+        }
+        const issues = run ? (await listIngestionIssues(db, run.ID)).slice(0, 20) : [];
+        return {
+          sourceId: source.sourceId,
+          sourceName: source.sourceName,
+          sourceType: source.sourceType,
+          enabled: source.enabled,
+          supportedEntities: source.supportedEntities,
+          mappingVersion: source.mappingVersion,
+          latestRun: run ? {
+            runId: run.ID,
+            status: run.status,
+            startedAt: run.startedAt,
+            completedAt: run.completedAt || null,
+            retrievedAt: run.retrievedAt || null,
+            decisionEligible: run.decisionEligible,
+            snapshotPromoted: run.snapshotPromoted,
+            rowCounts,
+            errorCategory: run.errorCategory || null
+          } : null,
+          validationIssues: issues.map(issue => ({
+            code: issue.code,
+            severity: issue.severity,
+            entityType: issue.entityType || null,
+            sourceRecordId: issue.sourceRecordId || null,
+            field: issue.field || null,
+            message: issue.message
+          }))
+        };
+      }));
+      const fixtureCounts = Object.fromEntries(Object.entries(mockSapFixture.entities)
+        .map(([entityType, entity]) => [entityType, entity.records.length]));
+      return {
+        source: 'Credit Guard ingestion registry and persisted extraction records',
+        retrievedAt: new Date().toISOString(),
+        sources,
+        syntheticMockSapFixture: {
+          label: 'Synthetic Mock SAP Simulator records; not live SAP data.',
+          sourceId: MOCK_SAP_SOURCE_ID,
+          recordCounts: fixtureCounts
+        }
+      };
+    },
+    get_mock_sap_records: async ({ entity_type, customer_id }) => {
+      const entity = mockSapFixture.entities[entity_type];
+      const records = entity.records.filter(record =>
+        !customer_id || record.KUNNR === customer_id
+      ).slice(0, 20);
+      return {
+        source: 'Synthetic Mock SAP Simulator fixtures; not a live SAP connection.',
+        retrievedAt: new Date().toISOString(),
+        entityType: entity_type,
+        records
+      };
+    },
+    preview_credit_workflow: async ({ workflow_id }) => {
+      if (workflow_id !== WORKFLOW_PREVIEW.workflowId) {
+        throw new TypeError('The requested workflow preview is not supported.');
+      }
+      return {
+        ...WORKFLOW_PREVIEW,
+        retrievedAt: new Date().toISOString(),
+        steps: WORKFLOW_PREVIEW.steps.map(step => ({
+          ...step,
+          dependsOn: [...step.dependsOn],
+          requiredRoles: [...step.requiredRoles]
+        })),
+        limitations: [...WORKFLOW_PREVIEW.limitations]
+      };
+    },
+    prepare_limit_change: async input => {
+      assertCreditLimitWorkflowAvailable(customerProvider.source);
       const proposal = await creditService.prepareLimitChange(db, user, {
         customerId: input.customer_id,
         requestedLimit: input.new_limit,
@@ -637,9 +1039,15 @@ function createToolRegistry(db, user, {
             retrievedAt: result.retrievedAt,
             customerId: result.customer?.ID || result.analysis?.ID || result.customerId || null
           });
-        } else if (customerProvider.source === 'abap'
-          && ['get_customer', 'list_customers_over_threshold', 'exposure_by'].includes(definition.name)) {
-          step.summary = `Read-only ABAP data retrieved at ${new Date().toISOString()}.`;
+        } else if (definition.name !== 'preview_credit_workflow') {
+          const sourceLabel = customerProvider.source === 'abap'
+            ? 'ABAP Environment via BTP Destination service'
+            : 'Credit Guard CAP database';
+          onDataSource({ source: sourceLabel, retrievedAt: new Date().toISOString() });
+          if (customerProvider.source === 'abap'
+            && ['get_customer', 'list_customers_over_threshold', 'exposure_by'].includes(definition.name)) {
+            step.summary = `Read-only ABAP data retrieved at ${new Date().toISOString()}.`;
+          }
         }
         step.status = 'completed';
         if (!result?.source) {
@@ -652,7 +1060,9 @@ function createToolRegistry(db, user, {
         return result;
       } catch (error) {
         step.status = 'failed';
-        step.summary = error.statusCode === 403 ? 'Permission denied.' : 'Tool validation or execution failed.';
+        step.summary = error.statusCode === 403 ? 'Permission denied.'
+          : error.statusCode === 409 ? 'Credit-limit workflow is unavailable in read-only SAP mode.'
+            : 'Tool validation or execution failed.';
         step.completedAt = new Date().toISOString();
         await onStep({ ...step });
         throw error;
@@ -731,7 +1141,7 @@ function formatMonitoringAnalysis(analysis) {
 function parseLimitProposal(message) {
   if (!/\b(?:prepare|propose|request)\b/i.test(message)
     || !/\b(?:credit[- ]limit|limit change|limit increase|limit request)\b/i.test(message)) return null;
-  const customerId = message.match(/\bC\d{3,11}\b/i)?.[0]?.toUpperCase();
+  const customerId = message.match(/\b(?:MS-)?C\d{3,11}\b/i)?.[0]?.toUpperCase();
   const amountMatch = message.match(/\b(?:to|of)\s*(?:INR\s*)?([\d,]+(?:\.\d{1,2})?)\b/i);
   const reason = message.match(/\bbecause\s+(.+)$/i)?.[1]?.trim();
   if (!customerId || !amountMatch || !reason) {
@@ -745,9 +1155,22 @@ function parseLimitProposal(message) {
 }
 
 async function offlineReply(message, tools, documentContext) {
+  if (isWorkflowCreationRequest(message)) {
+    if (!isSupportedRiskWorkflowRequest(message)) {
+      return 'I can currently preview the fixed synthetic Mock SAP credit-risk review workflow only. Specify Mock SAP extraction, credit-risk monitoring, or an alert report; no workflow action was executed. (Offline demo mode)';
+    }
+    const workflowPreview = await tools.preview_credit_workflow({
+      workflow_id: WORKFLOW_PREVIEW.workflowId
+    });
+    return {
+      reply: 'I prepared a preview of the supported Mock SAP credit-risk review workflow. It has not been scheduled or executed; operator confirmation and existing role authorization are required for extraction and monitoring. (Offline demo mode)',
+      workflowPreview,
+      preparedActions: []
+    };
+  }
   if (documentContext) {
     const sourceText = documentContext.text;
-    const ids = [...new Set(sourceText.match(/\bC\d{3}\b/gi) || [])].map(id => id.toUpperCase());
+    const ids = [...new Set(sourceText.match(/\b(?:MS-)?C\d{3}\b/gi) || [])].map(id => id.toUpperCase());
     const matched = [];
     for (const id of ids.slice(0, 5)) {
       try { matched.push(await tools.get_customer({ customer_id: id })); }
@@ -791,8 +1214,119 @@ async function offlineReply(message, tools, documentContext) {
     const result = await tools.analyzeAbapCreditRisk({ customerId: id[0].toUpperCase() });
     return formatAbapAnalysis(result);
   }
-  if (!/\bC\d{3}\b/i.test(message)
-    && /monitoring|portfolio|risk|overdue|analy[sz]e|high.?risk/i.test(message)) {
+  const utilizationThreshold = message.match(
+    /\b(?:above|over|greater than|exceed(?:ing)?)\s+(\d+(?:\.\d+)?)\s*%/i
+  );
+  if (utilizationThreshold && /utili[sz]ation/i.test(message)) {
+    const percent = Number(utilizationThreshold[1]);
+    if (Number.isFinite(percent) && percent >= 0 && percent <= 1000) {
+      const candidates = await tools.list_customers_over_threshold({
+        min_utilisation: percent / 100
+      });
+      const customers = candidates.filter(customer => customer.utilisation > percent / 100);
+      const details = customers.length
+        ? customers.map(customer =>
+          `${customer.name} (${(customer.utilisation * 100).toFixed(1)}% utilisation; exposure ${customer.exposure} / limit ${customer.creditLimit} ${customer.currency || ''})`
+        ).join('; ')
+        : 'none';
+      return `Customers above ${percent}% credit utilisation: ${details}. Values are from deterministic Credit Guard calculations. (Offline demo mode)`;
+    }
+  }
+  if (/\boverdue\b|\bpast due\b/i.test(message)) {
+    const highExposure = /\b(?:high|elevated)\s+exposure\b/i.test(message);
+    const customers = await tools.list_customers_over_threshold({
+      min_utilisation: highExposure ? 0.8 : 0
+    });
+    const overdue = customers.filter(customer => Number(customer.overdueAmount) > 0);
+    const details = overdue.length
+      ? overdue.map(customer => `${customer.name} (${customer.overdueAmount} ${customer.currency || ''} overdue${highExposure ? `, ${Math.round(customer.utilisation * 100)}% utilization` : ''})`).join('; ')
+      : 'none';
+    return `Customers ${highExposure ? 'at or above the existing 80% utilization warning threshold and with overdue invoices' : 'with overdue invoices'}: ${details}. Amounts are backend-calculated; run customer analysis for invoice-level details. (Offline demo mode)`;
+  }
+  if (/\b(?:simulator|synthetic|mock\s*sap)\b/i.test(message)
+    && /\b(?:record|customer|invoice|payment|credit account)\b/i.test(message)) {
+    const entityType = /\bpayment/i.test(message) ? 'PAYMENT'
+      : /\binvoice|invoices\b/i.test(message) ? 'INVOICE'
+        : /\bcredit account|credit limit/i.test(message) ? 'CREDIT_ACCOUNT' : 'CUSTOMER';
+    const result = await tools.get_mock_sap_records({ entity_type: entityType });
+    const details = result.records.length
+      ? result.records.map(record => entityType === 'CUSTOMER'
+        ? `${record.KUNNR}: ${record.NAME1} (${record.BUKRS}, ${record.LAND1})`
+        : entityType === 'INVOICE'
+          ? `${record.BELNR}: ${record.KUNNR}, ${record.DMBTR} ${record.WAERS}, ${record.STATUS}`
+          : entityType === 'PAYMENT'
+            ? `${record.PAYMENT_ID}: ${record.KUNNR}, ${record.DMBTR} ${record.WAERS}, ${record.STATUS}`
+            : `${record.CREDIT_ACCOUNT}: ${record.KUNNR}, limit ${record.KLIMK} ${record.WAERS}`
+      ).join('; ')
+      : 'No fixture records matched.';
+    return `${result.source} ${details} (Offline demo mode)`;
+  }
+  if (/\b(?:extraction|ingestion|mock\s*sap|source status|data source)\b/i.test(message)) {
+    const result = await tools.get_data_ingestion_status({});
+    const summaries = result.sources.length
+      ? result.sources.map(source => source.latestRun
+        ? `${source.sourceName}: ${source.latestRun.status}, started ${source.latestRun.startedAt}, completed ${source.latestRun.completedAt || 'not completed'}, promoted ${source.latestRun.snapshotPromoted ? 'yes' : 'no'}`
+        : `${source.sourceName}: no extraction run is recorded`).join('; ')
+      : 'No source has been registered in the ingestion registry.';
+    return `${summaries} Synthetic Mock SAP fixture counts (not live SAP data): ${Object.entries(result.syntheticMockSapFixture.recordCounts).map(([type, count]) => `${type} ${count}`).join(', ')}. These are fixture counts, not imported-record counts. (Offline demo mode)`;
+  }
+  if (/\b(?:alert|monitoring event|alert event)\b/i.test(message)) {
+    const result = await tools.get_monitoring_alerts({
+      status: /\bresolved\b/i.test(message) ? 'RESOLVED'
+        : /\backnowledged\b/i.test(message) ? 'ACKNOWLEDGED'
+          : /\ball alerts\b/i.test(message) ? 'ALL' : 'ACTIVE'
+    });
+    const details = result.alerts.length
+      ? result.alerts.map(alert =>
+        `${alert.customerName} (${alert.severity}, ${alert.status}, ${alert.conditionKey}); ${alert.events.length} stored event(s)`
+      ).join('; ')
+      : `No ${result.status.toLowerCase()} alerts are stored.`;
+    return `${details}. Results are from persisted Credit Guard alert and event records. (Offline demo mode)`;
+  }
+  if (/\b(?:approval|limit request)\b/i.test(message)) {
+    const customerId = message.match(/\b(?:MS-)?C\d{3,11}\b/i)?.[0]?.toUpperCase();
+    if (customerId) {
+      const approval = await tools.get_customer_approval_history({ customer_id: customerId });
+      const details = approval.requests.length
+        ? approval.requests.map(request =>
+          `${request.status} request ${request.requestId}, requested ${request.requestedLimit} from ${request.currentLimit}; ${request.decisions.map(decision => `decision ${decision.newStatus} by ${decision.approver_ID} (${decision.decisionReason})`).join('; ') || 'no decision event recorded'}`
+        ).join('; ')
+        : 'No Credit Guard limit requests are recorded for this customer.';
+      return `${details} Human approval remains authoritative; the assistant did not submit or decide a request. (Offline demo mode)`;
+    }
+    const status = /\brejected\b/i.test(message) ? 'Rejected'
+      : /\bapproved\b/i.test(message) ? 'Approved' : 'Pending';
+    const requests = await tools.list_limit_requests({ status });
+    const details = requests.length
+      ? requests.map(request => `${request.customerName} (${request.customer_ID}): ${request.status}, routed to ${request.approverLevel}`).join('; ')
+      : `No ${status.toLowerCase()} limit requests are recorded.`;
+    return `${details} Approval decisions are made by authorized human users. (Offline demo mode)`;
+  }
+  if (!/\b(?:MS-)?C\d{3}\b/i.test(message)
+    && /\b(?:risk|status|analyse|analyze|explain|complete)\b/i.test(message)) {
+    const customers = await tools.list_customers_over_threshold({ min_utilisation: 0 });
+    const match = customers.find(customer =>
+      message.toLocaleLowerCase().includes(customer.name.toLocaleLowerCase()));
+    if (match) {
+      const detail = await tools.get_customer({ customer_id: match.ID });
+      let monitoringStatus = 'No completed monitoring analysis is available.';
+      try {
+        const analysis = await tools.get_monitoring_analysis({});
+        const finding = analysis.findings.find(item => item.customerId === match.ID);
+        monitoringStatus = finding
+          ? `Latest monitoring finding: ${finding.severity} (${finding.conditions.join(', ')}).`
+          : `The latest monitoring run has no stored finding for ${match.ID}.`;
+      } catch (error) {
+        if (![404, 409].includes(error.statusCode)) throw error;
+      }
+      const payments = Array.isArray(detail.payments)
+        ? `${detail.payments.length} payment record(s) available`
+        : 'Payment history is unavailable for the configured source';
+      return `${recommendation(detail)} Outstanding items: ${detail.openItems.length}; ${payments}. ${monitoringStatus} (Offline demo mode)`;
+    }
+  }
+  if (!/\b(?:MS-)?C\d{3}\b/i.test(message)
+    && /monitoring|portfolio|risk|overdue|analy[sz]e|high.?risk|recommend|next.*action|credit.control/i.test(message)) {
     try {
       return formatMonitoringAnalysis(await tools.get_monitoring_analysis({})) + ' (Offline demo mode)';
     } catch (error) {
@@ -802,7 +1336,7 @@ async function offlineReply(message, tools, documentContext) {
       throw error;
     }
   }
-  const id = message.match(/\bC\d{3}\b/i);
+  const id = message.match(/\b(?:MS-)?C\d{3}\b/i);
   if (/customer|explain|recommend|flag|C\d{3}/i.test(message) && id) {
     try { return `${recommendation(await tools.get_customer({ customer_id: id[0].toUpperCase() }))} (Offline demo mode)`; }
     catch (error) { return `${error.message} (Offline demo mode)`; }
@@ -816,17 +1350,24 @@ async function offlineReply(message, tools, documentContext) {
 }
 
 class AgentController {
-  constructor({ db, user, abapClient, customerDataSource, executionStore, sleepFn, provider = createLlmProvider({
-    providerName: process.env.LLM_PROVIDER || 'anthropic',
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    model: process.env.LLM_MODEL,
-    timeoutMs: process.env.LLM_TIMEOUT_MS
-  }), maxSteps = MAX_STEPS, maxToolCalls = MAX_TOOL_CALLS, timeoutMs = EXECUTION_TIMEOUT_MS } = {}) {
+  constructor({ db, user, abapClient, customerDataSource, executionStore, sleepFn, provider,
+    providerName = process.env.LLM_PROVIDER || 'anthropic',
+    maxSteps = MAX_STEPS, maxToolCalls = MAX_TOOL_CALLS, timeoutMs = EXECUTION_TIMEOUT_MS } = {}) {
     this.db = db;
     this.user = user;
     this.abapClient = abapClient;
     this.customerDataSource = customerDataSource;
-    this.provider = provider;
+    this.provider = provider === undefined ? createLlmProvider({
+      providerName,
+      apiKey: providerName === 'gemini'
+        ? process.env.GEMINI_API_KEY
+        : process.env.ANTHROPIC_API_KEY,
+      model: process.env.LLM_MODEL,
+      timeoutMs: process.env.LLM_TIMEOUT_MS
+    }) : provider;
+    this.providerName = this.provider
+      ? provider === undefined ? providerName : 'configured'
+      : 'offline';
     this.executionStore = executionStore;
     this.sleepFn = sleepFn;
     this.maxSteps = maxSteps;
@@ -881,6 +1422,24 @@ class AgentController {
         resumePlan
       });
       const result = await Promise.race([run, timedOut]);
+      const provenance = executionProvenance(execution);
+      result.provider = result.offline ? 'offline' : this.providerName;
+      result.providerFallback = execution.providerFallback === true;
+      result.providerFallbackReason = execution.providerErrorCategory || null;
+      result.modulesUsed = provenance.modulesUsed;
+      result.dataSourcesUsed = provenance.dataSourcesUsed;
+      if (result.workflowPreview) {
+        result.reply += `\n\nWorkflow preview only: no application records were read or changed. Proposed modules: ${result.workflowPreview.steps.map(step => step.module).join(', ')}.`;
+      } else if (provenance.modulesUsed.length) {
+        const sources = provenance.dataSourcesUsed.map(source => source.name);
+        result.reply += `\n\nModules used: ${provenance.modulesUsed.join(', ')}.${sources.length ? ` Data sources: ${sources.join(', ')}.` : ''}`;
+      }
+      const providerLabel = result.provider === 'gemini' ? 'Gemini'
+        : result.provider === 'anthropic' ? 'Anthropic'
+          : result.provider === 'offline' ? 'Offline fallback' : 'Configured provider';
+      result.reply += `\n\nResponse provider: ${providerLabel}${result.providerFallbackReason
+        ? ` (fallback reason: ${result.providerFallbackReason.replaceAll('_', ' ')})`
+        : ''}.`;
       execution.status = 'completed';
       execution.completedAt = new Date().toISOString();
       execution.preparedActions = result.preparedActions || [];
@@ -996,9 +1555,10 @@ class AgentController {
       : message;
     const messages = [...history, { role: 'user', content: prompt || 'Resume the saved execution using its validated plan.' }];
     const system = [
-      'You are a Credit Guard task planner. Understand the requested outcomes and create a small, ordered plan using only the supplied registered tool names and their declared inputs.',
-      'Plans are declarative only. Never provide permissions, executable code, SQL, shell commands, or tool definitions. Use only deterministic registered tools; do not invent credit-risk calculations or ranking criteria.',
-      'Use dependencies for data-derived inputs. Only the customer ID from list_customers_over_threshold may be expanded into get_customer reads, and each detail read is a separate task.',
+      'You are the planning component of the Credit Guard AI assistant. Understand the user question and create the smallest useful plan using only supplied registered tools and declared inputs. For customer analysis use get_customer; for utilization cohorts use list_customers_over_threshold; for portfolio exposure use exposure_by or get_portfolio_summary; for persisted monitoring findings use get_monitoring_analysis; for alert state and event history use get_monitoring_alerts; for approval status/history use list_limit_requests or get_customer_approval_history; for source and extraction status use get_data_ingestion_status. Use the actual tool results as the sole source of business facts.',
+      'Plans are declarative only. Never provide permissions, executable code, SQL, shell commands, or tool definitions. Use only deterministic registered tools. Do not calculate, alter, round, or invent credit limits, exposure, utilization, overdue amounts, risk classifications, or monitoring thresholds; rely on backend-calculated values.',
+      'When asked to create, design, or automate a workflow, use preview_credit_workflow only. It returns a fixed preview and does not execute any step. Never claim that extraction, monitoring, notification, scheduling, or financial actions were performed by a workflow.',
+      'Use dependencies for data-derived inputs. A customer ID from list_customers_over_threshold or search_customers may be expanded into get_customer reads, and each detail read is a separate task.',
       'Use PROPOSAL only when the user explicitly requests preparing a credit-limit change and explicitly provides the customer ID, requested amount, and reason. Never submit or approve a proposal.',
       'If essential information or ranking criteria are undefined, provide a concise clarificationQuestion. Do not create a proposal merely as a follow-up action.',
       documentContext
@@ -1010,6 +1570,14 @@ class AgentController {
     try {
       if (resumePlan) {
         planningResponse = null;
+      } else if (isWorkflowCreationRequest(message)) {
+        planningResponse = {
+          toolCalls: [{
+            id: 'workflow-preview-plan',
+            name: PLAN_TOOL_NAME,
+            input: workflowPreviewPlan()
+          }]
+        };
       } else {
       planningResponse = await this.provider.complete({
         messages,
@@ -1030,6 +1598,16 @@ class AgentController {
     }
 
     const calls = planningResponse?.toolCalls || [];
+    if (isWorkflowCreationRequest(message) && !isSupportedRiskWorkflowRequest(message)) {
+      execution.planStatus = 'REJECTED';
+      return {
+        reply: 'I can currently preview only the fixed synthetic Mock SAP credit-risk review workflow. Specify Mock SAP extraction, credit-risk monitoring, or an alert report; no workflow action was executed.',
+        offline: false,
+        preparedActions: [],
+        plan: null,
+        taskResults: []
+      };
+    }
     if (!resumePlan && (calls.length !== 1 || calls[0].name !== PLAN_TOOL_NAME)) {
       execution.planStatus = 'REJECTED';
       return {
@@ -1290,7 +1868,7 @@ class AgentController {
           ],
           tools: [],
           signal,
-          system: 'You are a Credit Guard assistant. Summarize only evidence in the supplied results. Do not invent risk rankings, formulas, invoices, or customer facts. Clearly report failed, blocked, and incomplete work. Never submit or approve credit-limit changes.'
+          system: 'You are the Credit Guard business assistant. Answer the user naturally and directly using only the supplied validated Credit Guard tool results and conversation context. Include relevant customer identity, credit limit, backend-calculated exposure and utilization, overdue invoices, payments, monitoring findings, alert events, extraction status, and approval status when available. Clearly identify facts that were not retrieved. Do not invent or recalculate financial values, thresholds, or risk rankings; deterministic backend values are authoritative. Recommendations are advisory only. Never submit or approve credit-limit changes or imply that a human approval has occurred unless the supplied data says so. A workflow tool result is a preview only: explain its steps, dependencies, expected results, role requirements, and limitations; never imply it was scheduled or executed.'
         });
         reply = finalResponse?.toolCalls?.length
           ? `Plan status: ${plan.status}. ${completedCount} of ${plan.tasks.length} tasks completed.${clarification}`
@@ -1312,7 +1890,10 @@ class AgentController {
       offline,
       preparedActions,
       plan: publicPlan(plan),
-      taskResults
+      taskResults,
+      ...(executionOutputs.find(output => output.tool === 'preview_credit_workflow')
+        ? { workflowPreview: executionOutputs.find(output => output.tool === 'preview_credit_workflow').result }
+        : {})
     };
   }
 }

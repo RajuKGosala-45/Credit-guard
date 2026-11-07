@@ -2,7 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   AnthropicProvider,
+  GeminiProvider,
   createLlmProvider,
+  testGeminiConnectivity,
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS
 } = require('../srv/llm');
@@ -185,4 +187,149 @@ test('provider sanitizes network failures', async () => {
         && !error.message.includes('private details')
     );
   });
+});
+
+test('Gemini provider uses the official SDK contract and normalizes forced planning calls', async () => {
+  let request;
+  const provider = new GeminiProvider({
+    apiKey: 'gemini-test-key',
+    model: 'gemini-test-model',
+    client: {
+      models: {
+        async generateContent(options) {
+          request = options;
+          return {
+            text: '',
+            functionCalls: [{
+              id: 'call-1',
+              name: 'create_task_plan',
+              args: { objective: 'Inspect customer', tasks: [] }
+            }]
+          };
+        }
+      }
+    }
+  });
+  const result = await provider.complete({
+    messages: [
+      { role: 'user', content: 'Analyze C001' },
+      { role: 'assistant', content: 'I will inspect the customer.' }
+    ],
+    tools: [{
+      name: 'create_task_plan',
+      description: 'Create a validated plan.',
+      input_schema: { type: 'object', properties: { objective: { type: 'string' } }, required: ['objective'] }
+    }],
+    tool_choice: { type: 'tool', name: 'create_task_plan' },
+    system: 'Use only registered tools.'
+  });
+
+  assert.equal(request.model, 'gemini-test-model');
+  assert.equal(request.contents[0].role, 'user');
+  assert.equal(request.contents[1].role, 'model');
+  assert.equal(request.config.systemInstruction, 'Use only registered tools.');
+  assert.equal(request.config.automaticFunctionCalling.disable, true);
+  assert.deepEqual(request.config.toolConfig.functionCallingConfig, {
+    mode: 'ANY',
+    allowedFunctionNames: ['create_task_plan']
+  });
+  assert.equal(request.config.tools[0].functionDeclarations[0].parametersJsonSchema.type, 'object');
+  assert.deepEqual(result.toolCalls, [{
+    id: 'call-1',
+    name: 'create_task_plan',
+    input: { objective: 'Inspect customer', tasks: [] }
+  }]);
+  assert.equal(JSON.stringify(result).includes('gemini-test-key'), false);
+});
+
+test('Gemini provider selection preserves Anthropic and handles missing configuration', () => {
+  const client = { models: { generateContent: async () => ({ text: 'ok' }) } };
+  const provider = createLlmProvider({
+    providerName: 'gemini',
+    apiKey: 'gemini-test-key',
+    model: 'configured-gemini-model',
+    client
+  });
+  assert.ok(provider instanceof GeminiProvider);
+  assert.equal(provider.model, 'configured-gemini-model');
+  assert.equal(createLlmProvider({ providerName: 'gemini', apiKey: '' }), null);
+  assert.ok(createLlmProvider({ providerName: 'anthropic', apiKey: 'anthropic-test-key' }) instanceof AnthropicProvider);
+  assert.equal(createLlmProvider({ providerName: 'offline', apiKey: 'ignored' }), null);
+});
+
+test('Gemini provider categorizes authentication, quota, service and malformed-response errors safely', async () => {
+  for (const [status, category] of [
+    [400, 'provider_error'],
+    [401, 'provider_authentication'],
+    [403, 'provider_authentication'],
+    [429, 'rate_limited'],
+    [404, 'provider_error'],
+    [503, 'provider_unavailable']
+  ]) {
+    const provider = new GeminiProvider({
+      apiKey: 'gemini-test-key',
+      client: {
+        models: {
+          async generateContent() {
+            throw Object.assign(new Error('private credential data'), { status });
+          }
+        }
+      }
+    });
+    await assert.rejects(
+      provider.complete({ messages: [], tools: [], system: '' }),
+      error => error.category === category
+        && !error.message.includes('private credential data')
+        && !error.message.includes('gemini-test-key')
+    );
+  }
+
+  const malformed = new GeminiProvider({
+    apiKey: 'gemini-test-key',
+    client: { models: { generateContent: async () => ({ text: '', functionCalls: [] }) } }
+  });
+  await assert.rejects(
+    malformed.complete({ messages: [], tools: [], system: '' }),
+    error => error.category === 'provider_response_invalid'
+  );
+});
+
+test('Gemini timeout aborts the SDK request and connectivity check uses no tools', async () => {
+  let receivedSignal;
+  const hanging = new GeminiProvider({
+    apiKey: 'gemini-test-key',
+    timeoutMs: 5,
+    client: {
+      models: {
+        generateContent: (_options) => new Promise((_, reject) => {
+          receivedSignal = _options.config.abortSignal;
+          receivedSignal.addEventListener('abort', () => reject(new Error('request aborted')), { once: true });
+        })
+      }
+    }
+  });
+  await assert.rejects(
+    hanging.complete({ messages: [], tools: [], system: '' }),
+    error => error.category === 'provider_timeout'
+  );
+  assert.equal(receivedSignal.aborted, true);
+
+  let connectivityRequest;
+  const result = await testGeminiConnectivity({
+    apiKey: 'gemini-test-key',
+    model: 'gemini-test-model',
+    client: {
+      models: {
+        async generateContent(options) {
+          connectivityRequest = options;
+          return { text: 'OK' };
+        }
+      }
+    }
+  });
+  assert.deepEqual(result, { ok: true });
+  assert.equal(connectivityRequest.model, 'gemini-test-model');
+  assert.equal(connectivityRequest.config.tools, undefined);
+  assert.equal(connectivityRequest.config.toolConfig, undefined);
+  assert.equal(JSON.stringify(result).includes('gemini-test-key'), false);
 });

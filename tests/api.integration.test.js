@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 const { startCapServer, stopCapServer } = require('./support/cap-server');
 
 let server;
@@ -28,13 +29,30 @@ async function request(path, options) {
   return { response, body };
 }
 
-function postJson(path, body, identity = 'requester') {
+function postJson(path, body, identity = 'requester', idempotencyKey = randomUUID()) {
+  const headers = { 'content-type': 'application/json' };
+  if (path === '/api/limit-requests' && idempotencyKey !== null) {
+    headers['Idempotency-Key'] = idempotencyKey;
+  }
   return request(path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
     identity
   });
+}
+
+async function requestFrom(serverInstance, path, identity, options = {}) {
+  const headers = { ...options.headers };
+  if (identity) {
+    headers.authorization = `Basic ${Buffer.from(`${identity}:test`).toString('base64')}`;
+  }
+  const response = await fetch(`${serverInstance.origin}${path}`, { ...options, headers });
+  const text = await response.text();
+  let body;
+  try { body = JSON.parse(text); }
+  catch { body = text; }
+  return { response, body };
 }
 
 test('dashboard API returns the established KPI and exposure contract', async () => {
@@ -90,6 +108,84 @@ test('health endpoints are unauthenticated and report application readiness', as
   const ready = await request('/health/ready', { identity: null });
   assert.equal(ready.response.status, 200);
   assert.deepEqual(ready.body, { status: 'ready' });
+});
+
+test('session capabilities reflect authenticated roles used by the demo UI', async () => {
+  const anonymous = await request('/api/session', { identity: null });
+  assert.equal(anonymous.response.status, 401);
+
+  const reader = await request('/api/session', { identity: 'reader' });
+  assert.equal(reader.response.status, 200);
+  assert.equal(reader.body.userId, 'reader');
+  assert.deepEqual(reader.body.permissions, {
+    canExtract: false,
+    canRequest: false,
+    canApproveController: false,
+    canApproveFinance: false,
+    canMonitor: false
+  });
+
+  const controller = await request('/api/session', { identity: 'controller' });
+  assert.equal(controller.body.permissions.canRequest, true);
+  assert.equal(controller.body.permissions.canApproveController, true);
+  assert.equal(controller.body.permissions.canApproveFinance, false);
+
+  const finance = await request('/api/session', { identity: 'finance' });
+  assert.equal(finance.body.permissions.canApproveFinance, true);
+  assert.equal(finance.body.permissions.canMonitor, false);
+
+  const monitor = await request('/api/session', { identity: 'monitor' });
+  assert.equal(monitor.body.permissions.canRequest, false);
+  assert.equal(monitor.body.permissions.canMonitor, true);
+});
+
+test('SAP read-only mode reports unavailable workflow capabilities and blocks direct submissions', async t => {
+  const abapServer = await startCapServer({
+    env: { CREDIT_GUARD_AGENT_DATA_SOURCE: 'abap' },
+    probePath: '/api/session'
+  });
+  t.after(() => stopCapServer(abapServer));
+
+  const session = await requestFrom(abapServer, '/api/session', 'requester');
+  assert.equal(session.response.status, 200);
+  assert.equal(session.body.creditLimitWorkflow, 'READ_ONLY');
+  assert.equal(session.body.permissions.canRequest, false);
+  assert.equal(session.body.permissions.canApproveController, false);
+  assert.equal(session.body.permissions.canApproveFinance, false);
+
+  const blocked = await requestFrom(abapServer, '/api/limit-requests', 'requester', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'Idempotency-Key': randomUUID()
+    },
+    body: JSON.stringify({
+      customerId: 'C001',
+      requestedLimit: 1_100_000,
+      reason: 'Must not become an SAP limit change'
+    })
+  });
+  assert.equal(blocked.response.status, 409);
+  assert.match(blocked.body.error, /read-only mode/i);
+
+  const unauthorized = await requestFrom(abapServer, '/api/limit-requests', 'reader', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'Idempotency-Key': randomUUID()
+    },
+    body: JSON.stringify({
+      customerId: 'C001',
+      requestedLimit: 1_100_000,
+      reason: 'Reader remains unauthorized'
+    })
+  });
+  assert.equal(unauthorized.response.status, 403);
+
+  const requests = await requestFrom(abapServer, '/api/limit-requests', 'reader');
+  assert.equal(requests.response.status, 200);
+  const monitoring = await requestFrom(abapServer, '/api/monitoring/summary', 'reader');
+  assert.equal(monitoring.response.status, 200);
 });
 
 test('customer APIs return calculated summaries, details, and a 404 for unknown IDs', async () => {
@@ -173,6 +269,27 @@ test('offline assistant grounds portfolio analysis in monitoring findings and pr
   assert.equal((await request('/api/limit-requests?status=Pending')).body.length, 0);
 });
 
+test('offline assistant answers customer-name and extraction questions with explicit module provenance', async () => {
+  const customer = await postJson('/api/chat', {
+    message: 'Give me the complete credit risk status of Aarav Components.'
+  }, 'reader');
+  assert.equal(customer.response.status, 200);
+  assert.match(customer.body.reply, /Aarav Components \(C001\)/);
+  assert.ok(customer.body.modulesUsed.includes('Customers'));
+  assert.ok(customer.body.modulesUsed.includes('Payments'));
+  assert.ok(customer.body.dataSourcesUsed.some(source => source.name === 'Credit Guard CAP database'));
+
+  const extraction = await postJson('/api/chat', {
+    message: 'Did the latest Mock SAP extraction complete successfully?'
+  }, 'reader');
+  assert.equal(extraction.response.status, 200);
+  assert.match(extraction.body.reply, /No source has been registered|no extraction run is recorded/i);
+  assert.match(extraction.body.reply, /fixture counts/i);
+  assert.match(extraction.body.reply, /not live SAP data/i);
+  assert.ok(extraction.body.modulesUsed.includes('Data ingestion'));
+  assert.ok(extraction.body.modulesUsed.includes('SAP Simulator'));
+});
+
 test('API requires a CAP-authenticated identity and enforces reader/requester roles', async () => {
   const uiLogin = await request('/credit/', { identity: null });
   assert.equal(uiLogin.response.status, 401);
@@ -246,6 +363,127 @@ test('valid request API creates a Pending request with routing and list contract
   assert.equal(listedRequest.customerName, 'Merlion Systems');
 });
 
+test('limit-request idempotency replays the same request and preserves its single audit event', async () => {
+  const key = `request-${randomUUID()}`;
+  const payload = {
+    customerId: 'C005',
+    requestedLimit: 700_000,
+    reason: 'Idempotent approval request'
+  };
+  const first = await postJson('/api/limit-requests', payload, 'requester', key);
+  const replay = await postJson('/api/limit-requests', payload, 'requester', key);
+
+  assert.equal(first.response.status, 201);
+  assert.equal(replay.response.status, 201);
+  assert.equal(replay.response.headers.get('idempotency-replayed'), 'true');
+  assert.equal(replay.body.ID, first.body.ID);
+
+  const decision = await postJson(
+    `/api/limit-requests/${first.body.ID}/decision`,
+    { decision: 'Rejected', reason: 'Reviewed after the original submission' },
+    'finance'
+  );
+  assert.equal(decision.response.status, 200);
+
+  const replayAfterDecision = await postJson('/api/limit-requests', payload, 'requester', key);
+  assert.equal(replayAfterDecision.response.status, 201);
+  assert.equal(replayAfterDecision.body.ID, first.body.ID);
+  assert.equal(replayAfterDecision.body.status, 'Rejected');
+  const history = await request(`/api/limit-requests/${first.body.ID}/history`);
+  assert.equal(history.body.length, 1);
+});
+
+test('limit-request idempotency rejects a materially different payload for the same key', async () => {
+  const key = `request-${randomUUID()}`;
+  const first = await postJson('/api/limit-requests', {
+    customerId: 'C006',
+    requestedLimit: 800_000,
+    reason: 'Original request'
+  }, 'requester', key);
+  const conflict = await postJson('/api/limit-requests', {
+    customerId: 'C006',
+    requestedLimit: 850_000,
+    reason: 'Changed request'
+  }, 'requester', key);
+
+  assert.equal(first.response.status, 201);
+  assert.equal(conflict.response.status, 409);
+  assert.match(conflict.body.error, /different request/i);
+});
+
+test('different idempotency keys permit separate requests with identical business data', async () => {
+  const payload = {
+    customerId: 'C007',
+    requestedLimit: 900_000,
+    reason: 'Separate legitimate submission'
+  };
+  const first = await postJson('/api/limit-requests', payload, 'requester', `request-${randomUUID()}`);
+  const second = await postJson('/api/limit-requests', payload, 'requester', `request-${randomUUID()}`);
+
+  assert.equal(first.response.status, 201);
+  assert.equal(second.response.status, 201);
+  assert.notEqual(second.body.ID, first.body.ID);
+});
+
+test('concurrent identical limit-request submissions create one durable request', async () => {
+  const key = `request-${randomUUID()}`;
+  const payload = {
+    customerId: 'C008',
+    requestedLimit: 950_000,
+    reason: 'Concurrent retry'
+  };
+  const results = await Promise.all([
+    postJson('/api/limit-requests', payload, 'requester', key),
+    postJson('/api/limit-requests', payload, 'requester', key)
+  ]);
+
+  assert.deepEqual(results.map(result => result.response.status), [201, 201]);
+  assert.equal(results[0].body.ID, results[1].body.ID);
+  assert.equal(results.filter(result => result.response.headers.get('idempotency-replayed') === 'true').length, 1);
+});
+
+test('limit-request idempotency is authorization-gated and scoped to the requester', async () => {
+  const key = `request-${randomUUID()}`;
+  const payload = {
+    customerId: 'C009',
+    requestedLimit: 1_000_000,
+    reason: 'Requester-owned submission'
+  };
+  const first = await postJson('/api/limit-requests', payload, 'requester', key);
+  const unauthorized = await postJson('/api/limit-requests', payload, 'reader', key);
+  const otherRequester = await postJson('/api/limit-requests', payload, 'analyst', key);
+  const replay = await postJson('/api/limit-requests', payload, 'requester', key);
+
+  assert.equal(first.response.status, 201);
+  assert.equal(unauthorized.response.status, 403);
+  assert.equal(otherRequester.response.status, 201);
+  assert.notEqual(otherRequester.body.ID, first.body.ID);
+  assert.equal(replay.body.ID, first.body.ID);
+});
+
+test('failed validation does not reserve a key, and a committed retry replays safely', async () => {
+  const key = `request-${randomUUID()}`;
+  const invalid = await postJson('/api/limit-requests', {
+    customerId: 'C010',
+    requestedLimit: 0,
+    reason: 'Invalid initial attempt'
+  }, 'requester', key);
+  const validPayload = {
+    customerId: 'C010',
+    requestedLimit: 1_050_000,
+    reason: 'Retry after a rejected initial attempt'
+  };
+  const firstValid = await postJson('/api/limit-requests', validPayload, 'requester', key);
+  const replay = await postJson('/api/limit-requests', validPayload, 'requester', key);
+  const missingKey = await postJson('/api/limit-requests', validPayload, 'requester', null);
+
+  assert.equal(invalid.response.status, 400);
+  assert.equal(firstValid.response.status, 201);
+  assert.equal(replay.body.ID, firstValid.body.ID);
+  assert.equal(replay.response.headers.get('idempotency-replayed'), 'true');
+  assert.equal(missingKey.response.status, 400);
+});
+
 test('approval and rejection transitions preserve limits and reject duplicate decisions', async () => {
   const approvedRequest = await postJson('/api/limit-requests', {
     customerId: 'C001',
@@ -270,6 +508,11 @@ test('approval and rejection transitions preserve limits and reject duplicate de
   assert.equal(approved.response.status, 200);
   assert.equal(approved.body.status, 'Approved');
   assert.equal(approved.body.decidedBy, 'finance');
+  const approvalHistory = await request(`/api/limit-requests/${approvedRequest.body.ID}/history`);
+  assert.equal(approvalHistory.response.status, 200);
+  assert.equal(approvalHistory.body.length, 1);
+  assert.equal(approvalHistory.body[0].approver_ID, 'finance');
+  assert.equal(approvalHistory.body[0].decisionReason, 'Finance approval after contract review');
 
   const duplicate = await postJson(
     `/api/limit-requests/${approvedRequest.body.ID}/decision`,
@@ -325,6 +568,8 @@ test('concurrent decisions transition a request once and create an immutable aud
   assert.equal(history.body[0].previousStatus, 'Pending');
   assert.equal(history.body[0].newStatus, 'Approved');
   assert.equal(history.body[0].decisionReason, 'Reviewed concurrently');
+  assert.equal(history.body[0].timestamp, results.find(result =>
+    result.response.status === 200).body.decidedAt);
 
   const unauthorizedMutation = await request('/odata/v4/credit/ApprovalHistory', {
     method: 'DELETE',
@@ -395,13 +640,36 @@ test('decision endpoint validates decision, role, and request existence', async 
   assert.equal(missing.response.status, 404);
 });
 
+test('Gemini connectivity endpoint is authenticated and safely reports missing configuration', async () => {
+  const anonymous = await request('/api/ai/gemini/connectivity', {
+    method: 'POST',
+    identity: null
+  });
+  assert.equal(anonymous.response.status, 401);
+
+  const connectivity = await postJson('/api/ai/gemini/connectivity', {});
+  assert.equal(connectivity.response.status, 503);
+  assert.deepEqual(Object.keys(connectivity.body).sort(), [
+    'diagnostic', 'model', 'ok', 'provider'
+  ]);
+  assert.equal(connectivity.body.ok, false);
+  assert.equal(connectivity.body.provider, 'gemini');
+  assert.equal(connectivity.body.diagnostic, 'GEMINI_API_KEY is not configured.');
+  assert.equal(JSON.stringify(connectivity.body).includes('gemini-test-key'), false);
+});
+
 test('chat API returns an offline assistant contract and validates empty messages', async () => {
   const chat = await postJson('/api/chat', { message: 'Explain C001' });
   assert.equal(chat.response.status, 200);
   assert.deepEqual(Object.keys(chat.body).sort(), [
-    'conversationId', 'execution', 'executionSummary', 'memoryEnabled', 'offline', 'preparedActions', 'reply'
+    'conversationId', 'dataSourcesUsed', 'execution', 'executionSummary', 'memoryEnabled',
+    'modulesUsed', 'offline', 'preparedActions', 'provider', 'providerFallback',
+    'providerFallbackReason', 'reply'
   ]);
   assert.equal(chat.body.offline, true);
+  assert.equal(chat.body.provider, 'offline');
+  assert.ok(chat.body.modulesUsed.includes('Customers'));
+  assert.ok(chat.body.dataSourcesUsed.some(source => source.name === 'Credit Guard CAP database'));
   assert.equal(chat.body.memoryEnabled, true);
   assert.equal(chat.body.execution.status, 'completed');
   assert.equal(chat.body.executionSummary.executionId, chat.body.execution.ID);
@@ -411,6 +679,27 @@ test('chat API returns an offline assistant contract and validates empty message
 
   const empty = await postJson('/api/chat', { message: '   ' });
   assert.equal(empty.response.status, 400);
+});
+
+test('workflow requests return a persisted preview and do not execute extraction or monitoring', async () => {
+  const preview = await postJson('/api/chat', {
+    message: 'Create a workflow to extract Mock SAP credit data, validate records, run monitoring, and prepare an alert report.'
+  }, 'reader');
+
+  assert.equal(preview.response.status, 200);
+  assert.equal(preview.body.provider, 'offline');
+  assert.equal(preview.body.workflowPreview.status, 'PREVIEW_ONLY');
+  assert.equal(preview.body.workflowPreview.executionAvailable, false);
+  assert.equal(preview.body.workflowPreview.steps.length, 4);
+  assert.deepEqual(preview.body.execution.steps.map(step => step.tool), ['preview_credit_workflow']);
+  assert.match(preview.body.reply, /no application records were read or changed/i);
+
+  const history = await request(`/api/agent/executions/${preview.body.execution.ID}`, {
+    identity: 'reader'
+  });
+  assert.equal(history.response.status, 200);
+  assert.equal(history.body.steps[0].toolName, 'preview_credit_workflow');
+  assert.equal(history.body.steps[0].status, 'completed');
 });
 
 test('conversation history and execution logs are isolated by authenticated user and can be cleared', async () => {

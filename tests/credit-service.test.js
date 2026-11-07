@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { aggregateExposure, aggregatePortfolio } = require('../srv/creditService');
+const cds = require('@sap/cds');
+const {
+  aggregateExposure,
+  aggregatePortfolio,
+  createLimitRequest,
+  decideLimitRequest,
+  prepareLimitChange
+} = require('../srv/creditService');
 
 const customers = [
   {
@@ -83,4 +90,52 @@ test('zero-limit currency groups have null utilization rather than infinity', ()
   assert.equal(exposure[0].utilisation, null);
   assert.equal(portfolio.overallUtilisation, null);
   assert.equal(JSON.stringify({ exposure, portfolio }).includes('Infinity'), false);
+});
+
+test('SAP read-only mode blocks direct request preparation, submission, and approval after authorization', async () => {
+  const previousSource = process.env.CREDIT_GUARD_AGENT_DATA_SOURCE;
+  process.env.CREDIT_GUARD_AGENT_DATA_SOURCE = 'abap';
+  const requester = new cds.User({ id: 'requester', roles: ['CreditRequester'] });
+  const approver = new cds.User({ id: 'approver', roles: ['CreditApprover'] });
+  const reader = new cds.User({ id: 'reader', roles: ['CreditReader'] });
+  const pendingRequest = {
+    ID: 'request-1',
+    requestedBy: 'requester',
+    approverLevel: 'Finance Head',
+    status: 'Pending'
+  };
+  const db = {
+    async run(query) {
+      if (query.SELECT) {
+        assert.equal(query.SELECT.from.ref[0], 'credit.LimitRequests');
+        return [pendingRequest];
+      }
+      throw new Error('Read-only mode must not write request data.');
+    },
+    async tx() {
+      throw new Error('Read-only mode must not begin a decision transaction.');
+    }
+  };
+
+  try {
+    await assert.rejects(
+      prepareLimitChange(db, requester, { customerId: 'C001', requestedLimit: 120, reason: 'Reason' }),
+      { statusCode: 409, message: /read-only mode/i }
+    );
+    await assert.rejects(
+      createLimitRequest(db, requester, { customerId: 'C001', requestedLimit: 120, reason: 'Reason' }, 'key'),
+      { statusCode: 409, message: /read-only mode/i }
+    );
+    await assert.rejects(
+      decideLimitRequest(db, reader, pendingRequest.ID, { decision: 'Approved', reason: 'Reason' }),
+      { statusCode: 403 }
+    );
+    await assert.rejects(
+      decideLimitRequest(db, approver, pendingRequest.ID, { decision: 'Approved', reason: 'Reason' }),
+      { statusCode: 409, message: /read-only mode/i }
+    );
+  } finally {
+    if (previousSource === undefined) delete process.env.CREDIT_GUARD_AGENT_DATA_SOURCE;
+    else process.env.CREDIT_GUARD_AGENT_DATA_SOURCE = previousSource;
+  }
 });

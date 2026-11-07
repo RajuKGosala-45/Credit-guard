@@ -1,6 +1,7 @@
 const CSRF_TOKEN_ENDPOINT = '/credit/index.html';
 let csrfToken;
 let csrfTokenPromise;
+const inMemoryLimitRequestKeys = new Map();
 
 function isLoopbackHost() {
   const hostname = globalThis.location?.hostname;
@@ -93,6 +94,16 @@ async function request(path, options = {}) {
 
 export { request };
 
+export const getSession = () => request('/api/session');
+export const getMockSap = () => request('/api/mock-sap');
+export const extractMockSap = () => request('/api/mock-sap/extract', {
+  method: 'POST',
+  body: JSON.stringify({})
+});
+export const runMockSapMonitoring = () => request('/api/mock-sap/monitoring', {
+  method: 'POST',
+  body: JSON.stringify({})
+});
 export const getDashboard = () => request('/api/dashboard');
 export const getMonitoringSummary = () => request('/api/monitoring/summary');
 export const getMonitoringRuns = (limit = 20) => request(`/api/monitoring/runs?limit=${encodeURIComponent(limit)}`);
@@ -122,22 +133,94 @@ export const getCustomers = () => request('/api/customers');
 export const getCustomer = id => request(`/api/customers/${encodeURIComponent(id)}`);
 export const getCustomerPayments = id => request(`/api/customers/${encodeURIComponent(id)}/payments`);
 export const getLimitRequests = status => request(`/api/limit-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`);
-export const createLimitRequest = payload => request('/api/limit-requests', { method: 'POST', body: JSON.stringify(payload) });
+export const getApprovalHistory = requestId => request(
+  `/api/limit-requests/${encodeURIComponent(requestId)}/history`
+);
+function limitRequestFingerprint(payload) {
+  return JSON.stringify({
+    customerId: payload.customerId,
+    requestedLimit: Number(payload.requestedLimit),
+    reason: typeof payload.reason === 'string' ? payload.reason.trim() : payload.reason
+  });
+}
+function readPendingLimitRequest(storageKey) {
+  return globalThis.sessionStorage
+    ? globalThis.sessionStorage.getItem(storageKey)
+    : inMemoryLimitRequestKeys.get(storageKey) || null;
+}
+function writePendingLimitRequest(storageKey, value) {
+  if (globalThis.sessionStorage) globalThis.sessionStorage.setItem(storageKey, value);
+  else inMemoryLimitRequestKeys.set(storageKey, value);
+}
+function removePendingLimitRequest(storageKey) {
+  if (globalThis.sessionStorage) globalThis.sessionStorage.removeItem(storageKey);
+  else inMemoryLimitRequestKeys.delete(storageKey);
+}
+function pendingLimitRequestKey(payload, submissionId) {
+  const storageKey = `creditGuard.limitRequest:${encodeURIComponent(submissionId)}`;
+  const fingerprint = limitRequestFingerprint(payload);
+  const storedValue = readPendingLimitRequest(storageKey);
+  if (storedValue) {
+    let stored;
+    try { stored = JSON.parse(storedValue); }
+    catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+    if (stored?.fingerprint === fingerprint && typeof stored.key === 'string'
+      && stored.key.length > 0 && stored.key.length <= 160) {
+      return { storageKey, fingerprint, key: stored.key };
+    }
+  }
+  const key = globalThis.crypto?.randomUUID?.();
+  if (!key) throw new Error('Credit Guard could not create a safe request submission key.');
+  writePendingLimitRequest(storageKey, JSON.stringify({ fingerprint, key }));
+  return { storageKey, fingerprint, key };
+}
+function clearPendingLimitRequestKey({ storageKey, key }) {
+  const storedValue = readPendingLimitRequest(storageKey);
+  if (!storedValue) return;
+  let stored;
+  try { stored = JSON.parse(storedValue); }
+  catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return;
+  }
+  if (stored?.key === key) removePendingLimitRequest(storageKey);
+}
+export async function createLimitRequest(payload, submissionId = 'form') {
+  const submission = pendingLimitRequestKey(payload, submissionId);
+  const result = await request('/api/limit-requests', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': submission.key },
+    body: JSON.stringify(payload)
+  });
+  clearPendingLimitRequestKey(submission);
+  return result;
+}
 export const decideLimitRequest = (id, payload) => request(`/api/limit-requests/${encodeURIComponent(id)}/decision`, { method: 'POST', body: JSON.stringify(payload) });
+export const recoverMonitoringRun = id => request(
+  `/api/monitoring/runs/${encodeURIComponent(id)}/recover`,
+  { method: 'POST' }
+);
 export const sendChat = (message, documentContext, conversationId) => request('/api/chat', {
   method: 'POST', body: JSON.stringify({ message, documentContext, conversationId })
 });
 export const getAgentHistory = () => request('/api/agent/history');
+export const getAgentExecution = id => request(`/api/agent/executions/${encodeURIComponent(id)}`);
+export const recoverAgentExecution = id => request(
+  `/api/agent/executions/${encodeURIComponent(id)}/recover`,
+  { method: 'POST' }
+);
 export const getAgentConversation = id => request(`/api/agent/conversations/${encodeURIComponent(id)}`);
 export const clearAgentConversation = id => request(
   id ? `/api/agent/conversations/${encodeURIComponent(id)}` : '/api/agent/history',
   { method: 'DELETE' }
 );
-export const submitPreparedProposal = proposal => createLimitRequest({
+export const submitPreparedProposal = (proposal, submissionId = 'proposal') => createLimitRequest({
   customerId: proposal.customerId,
   requestedLimit: proposal.requestedLimit,
   reason: proposal.reason
-});
+}, submissionId);
 export function analyzeDocument(file) {
   const form = new FormData();
   form.append('document', file);

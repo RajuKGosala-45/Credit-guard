@@ -6,8 +6,10 @@ const multer = require('multer');
 const { validateProductionBindings } = require('./deployment');
 const creditService = require('./creditService');
 const { createPortfolioDataProvider } = require('./portfolioDataProvider');
+const { getConfiguredDataSource, isAbapReadOnlySource } = require('./dataSource');
 const { validateActorId } = require('./limitRequests');
 const { chat, toolDefinitions } = require('./agent');
+const { DEFAULT_GEMINI_MODEL, testGeminiConnectivity } = require('./llm');
 const { PLAN_VERSION, validatePlan } = require('./agentPlan');
 const { extractDocument, MAX_EXTRACTED_CHARACTERS } = require('./documents');
 const {
@@ -19,7 +21,10 @@ const {
 const { startMonitoringWorker } = require('./monitoringWorker');
 const { ENTITY_TYPES, isValidTimestamp } = require('./canonicalData');
 const { createConfiguredIngestionRuntime } = require('./ingestionRuntime');
+const mockSapFixture = require('./integrations/mock-sap/fixtures.json');
+const { getMockSapSourceDefinition } = require('./integrations/mock-sap/connector');
 const {
+  ensureMockSapSource,
   getSource,
   listSources,
   registerSource,
@@ -38,6 +43,7 @@ const {
 } = require('./monitoringStore');
 const {
   getIngestionRun,
+  getLatestIngestionRun,
   listIngestionIssues
 } = require('./ingestionStore');
 const {
@@ -205,6 +211,103 @@ cds.on('bootstrap', app => {
   app.use('/api', cds.middlewares.before);
   app.use('/api', express.json());
   app.use('/api', requireAuthenticatedUser);
+
+  app.get('/api/mock-sap', requireRole('CreditReader'), async (_req, res) => {
+    try {
+      const definition = getMockSapSourceDefinition();
+      const source = await getSource(cds.db, definition.sourceId);
+      const latestRun = source ? await getLatestIngestionRun(cds.db, source.sourceId) : null;
+      const issueRows = latestRun ? await listIngestionIssues(cds.db, latestRun.ID) : [];
+      return res.json({
+        label: 'SYNTHETIC MOCK SAP DATA — NOT A LIVE SAP CONNECTION',
+        registered: Boolean(source),
+        portfolioSource: getConfiguredDataSource(),
+        source: source || definition,
+        entities: mockSapFixture.entities,
+        latestRun: latestRun
+          ? publicIngestionRun(latestRun, issueRows.slice(0, 500), false, issueRows.length > 500)
+          : null
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 500)
+        .json({ error: error.statusCode ? error.message : 'Mock SAP simulator data is unavailable.' });
+    }
+  });
+
+  app.post('/api/mock-sap/extract', requireRole('CreditAdmin'), async (req, res) => {
+    try {
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+        || Object.keys(req.body).length) {
+        return res.status(400).json({ error: 'Mock SAP extraction does not accept request options.' });
+      }
+      const source = await ensureMockSapSource(cds.db);
+      const ingestionRuntime = createConfiguredIngestionRuntime({ db: cds.db });
+      const result = await ingestionRuntime.run({
+        user: currentUser(req),
+        sourceId: source.sourceId,
+        entityTypes: source.supportedEntities
+      });
+      const issueRows = await listIngestionIssues(cds.db, result.run.ID);
+      return res.status(200).json({
+        sourceName: source.sourceName,
+        ...publicIngestionRun(
+          result.run,
+          issueRows.slice(0, 500),
+          result.duplicate,
+          issueRows.length > 500
+        )
+      });
+    } catch (error) {
+      const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
+      return res.status(status).json({
+        error: status < 500 ? error.message : 'Mock SAP extraction could not be completed safely.',
+        ...(error.runId ? { runId: error.runId, errorCategory: error.category } : {})
+      });
+    }
+  });
+
+  app.post('/api/mock-sap/monitoring', requireAnyRole('CreditMonitor', 'CreditAdmin'), async (req, res) => {
+    try {
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+        || Object.keys(req.body).length) {
+        return res.status(400).json({ error: 'Mock SAP monitoring does not accept request options.' });
+      }
+      const sourceId = getMockSapSourceDefinition().sourceId;
+      const latestRun = await getLatestIngestionRun(cds.db, sourceId);
+      if (!latestRun?.snapshotPromoted) {
+        return res.status(409).json({ error: 'Complete Mock SAP data extraction is required before monitoring.' });
+      }
+      const run = await executeMonitoringRun({
+        db: cds.db,
+        user: currentUser(req),
+        runKind: 'MANUAL',
+        source: 'local'
+      });
+      return res.status(202).json(run);
+    } catch (error) {
+      return res.status(error.statusCode || 500)
+        .json({ error: error.statusCode ? error.message : 'Mock SAP monitoring could not be started.' });
+    }
+  });
+
+  app.get('/api/session', (req, res) => {
+    const user = currentUser(req);
+    const hasAnyRole = (...roles) => roles.some(role => user.is(role));
+    const readOnlySapSource = isAbapReadOnlySource();
+    return res.json({
+      userId: user.id,
+      creditLimitWorkflow: readOnlySapSource ? 'READ_ONLY' : 'LOCAL_DEMO',
+      permissions: {
+        canExtract: hasAnyRole('CreditAdmin'),
+        canRequest: !readOnlySapSource && hasAnyRole('CreditRequester', 'CreditAnalyst', 'CreditManager', 'CreditAdmin'),
+        canApproveController: !readOnlySapSource && hasAnyRole(
+          'CreditController', 'CreditManager', 'FinanceHead', 'CreditApprover', 'CreditAdmin'
+        ),
+        canApproveFinance: !readOnlySapSource && hasAnyRole('FinanceHead', 'CreditApprover', 'CreditAdmin'),
+        canMonitor: hasAnyRole('CreditMonitor', 'CreditAdmin')
+      }
+    });
+  });
 
   app.get('/api/ingestion/sources', requireRole('CreditAdmin'), async (_req, res) => {
     try {
@@ -530,7 +633,7 @@ cds.on('bootstrap', app => {
 
   app.get('/api/customers/:id/payments', requireRole('CreditReader'), async (req, res) => {
     try {
-      if ((process.env.CREDIT_GUARD_AGENT_DATA_SOURCE || 'local') !== 'local') {
+      if (getConfiguredDataSource() !== 'local') {
         return res.status(503).json({ error: 'Payment history is unavailable for the configured customer source.' });
       }
       const payments = await creditService.getCustomerPayments(cds.db, currentUser(req), req.params.id);
@@ -553,8 +656,14 @@ cds.on('bootstrap', app => {
 
   app.post('/api/limit-requests', requireRole('CreditRequester'), async (req, res) => {
     try {
-      const request = await creditService.createLimitRequest(cds.db, currentUser(req), req.body);
-      return res.status(201).json(request);
+      const result = await creditService.createLimitRequest(
+        cds.db,
+        currentUser(req),
+        req.body,
+        req.get('Idempotency-Key')
+      );
+      if (result.duplicate) res.set('Idempotency-Replayed', 'true');
+      return res.status(201).json(result.request);
     } catch (error) {
       return res.status(error.statusCode || (error instanceof TypeError ? 400 : 500)).json({ error: error.message });
     }
@@ -575,6 +684,71 @@ cds.on('bootstrap', app => {
       return res.json(history);
     } catch (error) {
       return res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/ai/gemini/connectivity', requireRole('CreditReader'), async (_req, res) => {
+    const model = process.env.LLM_MODEL || DEFAULT_GEMINI_MODEL;
+    try {
+      const result = await testGeminiConnectivity({
+        apiKey: process.env.GEMINI_API_KEY,
+        model,
+        timeoutMs: process.env.LLM_TIMEOUT_MS
+      });
+      if (result.ok) {
+        return res.json({
+          ok: true,
+          provider: 'gemini',
+          model,
+          diagnostic: 'Authenticated Gemini connectivity check succeeded.'
+        });
+      }
+
+      const diagnosticByCategory = {
+        provider_not_configured: 'GEMINI_API_KEY is not configured.',
+        provider_authentication: 'Gemini rejected the configured API key.',
+        rate_limited: 'Gemini rate limit was reached.',
+        provider_unavailable: 'Gemini is temporarily unavailable.',
+        provider_timeout: 'Gemini connectivity check timed out.',
+        provider_response_invalid: 'Gemini returned an invalid response.',
+        provider_error: Number.isInteger(result.statusCode)
+          ? `Gemini rejected the request (HTTP ${result.statusCode}). Verify the configured model and API key.`
+          : 'Gemini rejected the connectivity request.'
+      };
+      const statusByCategory = {
+        provider_not_configured: 503,
+        provider_authentication: 502,
+        rate_limited: 429,
+        provider_unavailable: 503,
+        provider_timeout: 504,
+        provider_response_invalid: 502,
+        provider_error: 502
+      };
+      const category = result.errorCategory || 'provider_unavailable';
+      return res.status(statusByCategory[category] || 502).json({
+        ok: false,
+        provider: 'gemini',
+        model,
+        diagnostic: diagnosticByCategory[category] || 'Gemini connectivity check failed safely.'
+      });
+    } catch (error) {
+      const category = error?.category;
+      const diagnostic = category === 'provider_timeout'
+        ? 'Gemini connectivity check timed out.'
+        : category === 'provider_authentication'
+          ? 'Gemini rejected the configured API key.'
+          : category === 'rate_limited'
+            ? 'Gemini rate limit was reached.'
+            : 'Gemini connectivity check could not be completed safely.';
+      const status = category === 'provider_timeout' ? 504
+        : category === 'rate_limited' ? 429
+          : category === 'provider_authentication' ? 502 : 503;
+      return res.status(status).json({
+        ok: false,
+        provider: 'gemini',
+        model,
+        diagnostic
+      });
     }
   });
 
@@ -792,6 +966,11 @@ cds.on('bootstrap', app => {
         ...documentContext,
         reply: result.reply,
         offline: result.offline,
+        provider: result.provider,
+        providerFallback: result.providerFallback,
+        providerFallbackReason: result.providerFallbackReason,
+        modulesUsed: result.modulesUsed,
+        dataSourcesUsed: result.dataSourcesUsed,
         plan: result.plan || null,
         taskResults: result.taskResults || [],
         executionSummary: result.executionSummary

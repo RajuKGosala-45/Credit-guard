@@ -47,6 +47,7 @@ function database(customers = [customer('C001')], { failOpenItems = false, calls
         if (failOpenItems) throw new Error('Source unavailable.');
         return items.filter(item => !selectedId || item.customer_ID === selectedId).map(item => ({ ...item }));
       }
+      if (table === 'credit.Payments') return [];
       if (table === 'credit.LimitRequests') return [];
       throw new Error(`Unexpected read from ${table}.`);
     }
@@ -155,6 +156,32 @@ test('decomposes a portfolio request and runs dependent customer reads sequentia
   assert.equal(result.execution.steps.every(step => step.status === 'completed'), true);
   assert.equal(result.taskResults[1].summary, 'Retrieved deterministic details for 2 customers.');
   assert.equal(result.execution.plan.tasks[1].dependencies[0], 'threshold');
+});
+
+test('resolves a customer name to its identity before retrieving financial detail', async () => {
+  const result = await chat(
+    'Give complete credit risk status for Customer C001.',
+    database([customer('C001')]),
+    undefined,
+    reader,
+    {
+      provider: providerFor(plan([
+        task('find-customer', 'search_customers', { query: 'Customer C001' }, {
+          requiredFields: ['ID', 'name']
+        }),
+        task('customer-detail', 'get_customer', {
+          customer_id: { $fromTask: 'find-customer', field: 'ID', mode: 'each' }
+        }, {
+          dependencies: ['find-customer'],
+          requiredFields: ['ID', 'exposure', 'overdueAmount', 'openItems']
+        })
+      ]))
+    }
+  );
+
+  assert.equal(result.plan.status, 'COMPLETED');
+  assert.deepEqual(result.execution.steps.map(step => step.tool), ['search_customers', 'get_customer']);
+  assert.deepEqual(result.modulesUsed, ['Customers', 'Invoices', 'Payments']);
 });
 
 test('executes independent read-only tasks sequentially in plan order', async () => {
@@ -727,7 +754,10 @@ test('does not invent a high-risk ranking when the model omits clarification', a
     assert.equal(result.execution.id, 'saved-execution');
     assert.deepEqual(result.plan.tasks.map(item => item.status), ['COMPLETED', 'COMPLETED']);
     assert.deepEqual(result.plan.tasks.map(item => item.attemptCount), [1, 1]);
-    assert.equal(db.calls.filter(call => call.table === 'credit.Customers').length, 1);
+    assert.equal(
+      db.calls.filter(call => call.table === 'credit.Customers' && call.selectedId === 'C002').length,
+      1
+    );
     assert.equal(result.executionSummary.completed, 2);
   });
 

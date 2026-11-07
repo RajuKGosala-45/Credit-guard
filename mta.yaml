@@ -1,7 +1,7 @@
 _schema-version: "3.3"
 ID: credit-guard
 version: 1.0.0
-description: Credit Guard CAP application with read-only ABAP Environment integration
+description: Credit Guard CAP application in HANA-backed synthetic demo mode
 
 modules:
   - name: credit-guard-db-deployer
@@ -26,8 +26,8 @@ modules:
     properties:
       CDS_ENV: production
       NODE_ENV: production
-      ABAP_DESTINATION_NAME: CREDIT_GUARD_ABAP
-      CREDIT_GUARD_AGENT_DATA_SOURCE: abap
+      CREDIT_GUARD_AGENT_DATA_SOURCE: local
+      CREDIT_GUARD_SYNTHETIC_DEMO: "true"
       CDS_FEATURES_TEST_DATA: "false"
       ABAP_HTTP_TIMEOUT_MS: "10000"
       ABAP_MAX_PAGES: "20"

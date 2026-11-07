@@ -21,7 +21,7 @@ export function renderCustomers(customers) {
   }).join('');
 }
 
-export function renderCustomerDetail(customer, payments = []) {
+export function renderCustomerDetail(customer, payments = [], approvalHistory = []) {
   const host = document.querySelector('#customer-detail');
   const flags = customer.flags.length ? customer.flags.join(', ') : 'None';
   const status = customer.status === 'MANUAL_REVIEW' ? 'Manual review'
@@ -38,16 +38,22 @@ export function renderCustomerDetail(customer, payments = []) {
       `<tr><td>${escapeHTML(payment.reference)}</td><td>${escapeHTML(formatDate(payment.postingDate))}</td><td>${escapeHTML(formatMoney(payment.amount, payment.currency || customer.currency))}</td><td>${escapeHTML(payment.status)}</td></tr>`
     ).join('')}</tbody></table></div>` : Array.isArray(payments)
       ? '<p class="empty-state">No payment history is available for this customer.</p>'
-      : '<p class="empty-state">Payment history is not available from this configured source.</p>'}`;
+      : '<p class="empty-state">Payment history is not available from this configured source.</p>'}
+    <h3>Credit-limit decision history</h3>${approvalHistory.length ? approvalHistory.map(event =>
+      `<article class="approval-item"><span class="chip ${event.newStatus === 'Approved' ? 'healthy' : 'breach'}">${escapeHTML(event.newStatus)}</span>
+      <p>Approver ${escapeHTML(event.approver_ID)} · ${escapeHTML(formatDate(event.timestamp))}</p>
+      <p>Reason: ${escapeHTML(event.decisionReason)}</p></article>`
+    ).join('') : '<p class="empty-state">No credit-limit decisions are recorded for this customer.</p>'}`;
 }
 
-export async function handleCustomerClick(event, getCustomer, getPayments) {
+export async function handleCustomerClick(event, getCustomer, getPayments, getCustomerApprovalHistory) {
   const explain = event.target.closest('[data-explain]');
   if (explain) return { explainId: explain.dataset.explain };
   const row = event.target.closest('[data-customer-id]');
   if (!row) return null;
   const customer = await getCustomer(row.dataset.customerId);
   const payments = customer.source ? null : await getPayments(row.dataset.customerId);
-  renderCustomerDetail(customer, payments);
+  const approvalHistory = await getCustomerApprovalHistory(row.dataset.customerId);
+  renderCustomerDetail(customer, payments, approvalHistory);
   return { customer };
 }

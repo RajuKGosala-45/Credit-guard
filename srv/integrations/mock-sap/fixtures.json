@@ -1,0 +1,250 @@
+{
+  "source": {
+    "name": "Mock SAP Simulator (synthetic data only)",
+    "systemId": "MOCK-S4-001",
+    "mappingVersion": "mock-v1"
+  },
+  "entities": {
+    "CUSTOMER": {
+      "sourceEntity": "MockBusinessPartners",
+      "sourceRecordIdField": "KUNNR",
+      "fields": {
+        "customerId": "KUNNR",
+        "sourceCustomerId": "KUNNR",
+        "customerName": "NAME1",
+        "companyCode": "BUKRS",
+        "country": "LAND1",
+        "currency": "WAERS",
+        "riskClass": "CTLPC",
+        "lastReviewDate": "LAST_REVIEW_DATE"
+      },
+      "records": [
+        {
+          "KUNNR": "MS-C001",
+          "NAME1": "Meridian Components (Mock)",
+          "BUKRS": "M001",
+          "LAND1": "IN",
+          "WAERS": "INR",
+          "CTLPC": "C",
+          "LAST_REVIEW_DATE": "2026-10-31"
+        },
+        {
+          "KUNNR": "MS-C002",
+          "NAME1": "Kaveri Industrial Supply (Mock)",
+          "BUKRS": "M002",
+          "LAND1": "IN",
+          "WAERS": "INR",
+          "CTLPC": "B",
+          "LAST_REVIEW_DATE": "2026-10-31"
+        },
+        {
+          "KUNNR": "MS-C003",
+          "NAME1": "Atlas Food Distribution (Mock)",
+          "BUKRS": "M001",
+          "LAND1": "IN",
+          "WAERS": "INR",
+          "CTLPC": "B",
+          "LAST_REVIEW_DATE": "2026-10-31"
+        },
+        {
+          "KUNNR": "MS-C004",
+          "NAME1": "Northwind Field Services (Mock)",
+          "BUKRS": "M003",
+          "LAND1": "IN",
+          "WAERS": "INR",
+          "CTLPC": "C",
+          "LAST_REVIEW_DATE": "2026-10-31"
+        }
+      ]
+    },
+    "CREDIT_ACCOUNT": {
+      "sourceEntity": "MockCreditAccounts",
+      "sourceRecordIdField": "CREDIT_ACCOUNT",
+      "fields": {
+        "accountId": "CREDIT_ACCOUNT",
+        "customerId": "KUNNR",
+        "creditLimit": "KLIMK",
+        "currency": "WAERS",
+        "creditSegment": "KKBER"
+      },
+      "records": [
+        {
+          "CREDIT_ACCOUNT": "MS-CA001",
+          "KUNNR": "MS-C001",
+          "KLIMK": "1000000.00",
+          "WAERS": "INR",
+          "KKBER": "MSEG"
+        },
+        {
+          "CREDIT_ACCOUNT": "MS-CA002",
+          "KUNNR": "MS-C002",
+          "KLIMK": "2000000.00",
+          "WAERS": "INR",
+          "KKBER": "MSEG"
+        },
+        {
+          "CREDIT_ACCOUNT": "MS-CA003",
+          "KUNNR": "MS-C003",
+          "KLIMK": "500000.00",
+          "WAERS": "INR",
+          "KKBER": "MSEG"
+        },
+        {
+          "CREDIT_ACCOUNT": "MS-CA004",
+          "KUNNR": "MS-C004",
+          "KLIMK": "0.00",
+          "WAERS": "INR",
+          "KKBER": "MSEG"
+        }
+      ]
+    },
+    "INVOICE": {
+      "sourceEntity": "MockOpenItems",
+      "sourceRecordIdField": "BELNR",
+      "fields": {
+        "sourceDocumentId": "BELNR",
+        "documentItemId": "BUZEI",
+        "customerId": "KUNNR",
+        "accountId": "CREDIT_ACCOUNT",
+        "documentType": "BLART",
+        "originalAmount": "WRBTR",
+        "outstandingAmount": "DMBTR",
+        "currency": "WAERS",
+        "documentDate": "BLDAT",
+        "dueDate": "ZFBDT",
+        "paymentStatus": "STATUS"
+      },
+      "records": [
+        {
+          "BELNR": "MSINV-10001",
+          "BUZEI": "001",
+          "KUNNR": "MS-C001",
+          "CREDIT_ACCOUNT": "MS-CA001",
+          "BLART": "RV",
+          "WRBTR": "400000.00",
+          "DMBTR": "400000.00",
+          "WAERS": "INR",
+          "BLDAT": "2026-09-10",
+          "ZFBDT": "2026-10-10",
+          "STATUS": "OVERDUE"
+        },
+        {
+          "BELNR": "MSINV-10002",
+          "BUZEI": "001",
+          "KUNNR": "MS-C001",
+          "CREDIT_ACCOUNT": "MS-CA001",
+          "BLART": "RV",
+          "WRBTR": "800000.00",
+          "DMBTR": "800000.00",
+          "WAERS": "INR",
+          "BLDAT": "2026-10-20",
+          "ZFBDT": "2026-12-04",
+          "STATUS": "OPEN"
+        },
+        {
+          "BELNR": "MSINV-20001",
+          "BUZEI": "001",
+          "KUNNR": "MS-C002",
+          "CREDIT_ACCOUNT": "MS-CA002",
+          "BLART": "RV",
+          "WRBTR": "400000.00",
+          "DMBTR": "400000.00",
+          "WAERS": "INR",
+          "BLDAT": "2026-10-12",
+          "ZFBDT": "2026-11-26",
+          "STATUS": "OPEN"
+        },
+        {
+          "BELNR": "MSINV-20002",
+          "BUZEI": "001",
+          "KUNNR": "MS-C002",
+          "CREDIT_ACCOUNT": "MS-CA002",
+          "BLART": "RV",
+          "WRBTR": "300000.00",
+          "DMBTR": "300000.00",
+          "WAERS": "INR",
+          "BLDAT": "2026-10-18",
+          "ZFBDT": "2026-12-02",
+          "STATUS": "OPEN"
+        },
+        {
+          "BELNR": "MSINV-30001",
+          "BUZEI": "001",
+          "KUNNR": "MS-C003",
+          "CREDIT_ACCOUNT": "MS-CA003",
+          "BLART": "RV",
+          "WRBTR": "400000.00",
+          "DMBTR": "400000.00",
+          "WAERS": "INR",
+          "BLDAT": "2026-10-15",
+          "ZFBDT": "2026-11-29",
+          "STATUS": "OPEN"
+        },
+        {
+          "BELNR": "MSINV-40001",
+          "BUZEI": "001",
+          "KUNNR": "MS-C004",
+          "CREDIT_ACCOUNT": "MS-CA004",
+          "BLART": "RV",
+          "WRBTR": "75000.00",
+          "DMBTR": "75000.00",
+          "WAERS": "INR",
+          "BLDAT": "2026-10-22",
+          "ZFBDT": "2026-11-18",
+          "STATUS": "OPEN"
+        }
+      ]
+    },
+    "PAYMENT": {
+      "sourceEntity": "MockPayments",
+      "sourceRecordIdField": "PAYMENT_ID",
+      "fields": {
+        "paymentId": "PAYMENT_ID",
+        "customerId": "KUNNR",
+        "accountId": "CREDIT_ACCOUNT",
+        "amount": "DMBTR",
+        "currency": "WAERS",
+        "postingDate": "BUDAT",
+        "paymentStatus": "STATUS"
+      },
+      "records": [
+        {
+          "PAYMENT_ID": "MSPAY-50001",
+          "KUNNR": "MS-C001",
+          "CREDIT_ACCOUNT": "MS-CA001",
+          "DMBTR": "125000.00",
+          "WAERS": "INR",
+          "BUDAT": "2026-10-28",
+          "STATUS": "POSTED"
+        },
+        {
+          "PAYMENT_ID": "MSPAY-50002",
+          "KUNNR": "MS-C002",
+          "CREDIT_ACCOUNT": "MS-CA002",
+          "DMBTR": "80000.00",
+          "WAERS": "INR",
+          "BUDAT": "2026-10-25",
+          "STATUS": "POSTED"
+        },
+        {
+          "PAYMENT_ID": "MSPAY-50003",
+          "KUNNR": "MS-C003",
+          "CREDIT_ACCOUNT": "MS-CA003",
+          "DMBTR": "60000.00",
+          "WAERS": "INR",
+          "BUDAT": "2026-10-29",
+          "STATUS": "POSTED"
+        },
+        {
+          "PAYMENT_ID": "MSPAY-50004",
+          "KUNNR": "MS-C004",
+          "CREDIT_ACCOUNT": "MS-CA004",
+          "DMBTR": "25000.00",
+          "WAERS": "INR",
+          "BUDAT": "2026-10-30",
+          "STATUS": "POSTED"
+        }
+      ]
+    }
+  }
+}

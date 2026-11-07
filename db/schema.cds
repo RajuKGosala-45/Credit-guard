@@ -48,6 +48,13 @@ entity LimitRequests {
       decidedAt      : Timestamp;
 }
 
+entity LimitRequestIdempotency {
+  key ID          : String(64);
+      request_ID  : String(12) not null;
+      requester_ID: String(100) not null;
+      payloadHash : String(64) not null;
+}
+
 entity ApprovalHistory {
   key ID             : UUID;
       request_ID     : String(12) not null;

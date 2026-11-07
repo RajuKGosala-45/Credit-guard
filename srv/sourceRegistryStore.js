@@ -1,6 +1,7 @@
 const cds = require('@sap/cds');
 const { SELECT, INSERT, UPDATE } = cds.ql;
-const { validateSourceDefinition } = require('./sourceRegistry');
+const { MOCK_SAP_SOURCE_ID, validateSourceDefinition } = require('./sourceRegistry');
+const { getMockSapSourceDefinition } = require('./integrations/mock-sap/connector');
 
 function fromRow(row) {
   let supportedEntities;
@@ -56,6 +57,28 @@ async function registerSource(db, definition, now = new Date()) {
   return source;
 }
 
+async function ensureMockSapSource(db, now = new Date()) {
+  const definition = getMockSapSourceDefinition();
+  const existing = await getSource(db, MOCK_SAP_SOURCE_ID);
+  if (existing) {
+    const matchesDefinition = existing.sourceName === definition.sourceName
+      && existing.sourceType === definition.sourceType
+      && existing.supportedEntities.length === definition.supportedEntities.length
+      && existing.supportedEntities.every((entity, index) =>
+        entity === definition.supportedEntities[index])
+      && existing.mappingVersion === definition.mappingVersion
+      && existing.authenticationReference === null
+      && existing.configurationReference === definition.configurationReference;
+    if (!matchesDefinition) {
+      const error = new Error('Registered Mock SAP source conflicts with the built-in simulator definition.');
+      error.statusCode = 409;
+      throw error;
+    }
+    return existing;
+  }
+  return registerSource(db, definition, now);
+}
+
 async function updateSource(db, sourceId, changes, now = new Date()) {
   const current = await getSource(db, sourceId);
   if (!current) {
@@ -65,6 +88,12 @@ async function updateSource(db, sourceId, changes, now = new Date()) {
   }
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
     throw new TypeError('Source update must be an object.');
+  }
+  if (sourceId === MOCK_SAP_SOURCE_ID
+    && Object.keys(changes).some(field => field !== 'enabled')) {
+    const error = new Error('Built-in Mock SAP source configuration cannot be changed.');
+    error.statusCode = 400;
+    throw error;
   }
   const { createdAt, updatedAt, ...editable } = current;
   const updated = validateSourceDefinition({ ...editable, ...changes });
@@ -101,6 +130,7 @@ function selectEnabledSource(source) {
 
 module.exports = {
   getSource,
+  ensureMockSapSource,
   listSources,
   registerSource,
   selectEnabledSource,

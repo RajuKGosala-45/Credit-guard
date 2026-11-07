@@ -35,14 +35,26 @@ const TOOL_RESULT_FIELDS = Object.freeze({
     'ID', 'name', 'exposure', 'creditLimit', 'utilisation', 'overdueAmount',
     'overdueShare', 'riskClass', 'flags', 'currency', 'source', 'retrievedAt'
   ],
+  search_customers: ['ID', 'name', 'country', 'companyCode'],
   get_customer: [
     'ID', 'name', 'exposure', 'creditLimit', 'utilisation', 'overdueAmount',
-    'overdueShare', 'riskClass', 'flags', 'currency', 'source', 'retrievedAt', 'openItems'
+    'overdueShare', 'riskClass', 'flags', 'currency', 'source', 'retrievedAt', 'openItems', 'payments'
   ],
   exposure_by: ['label', 'currency', 'exposure', 'creditLimit', 'customers', 'utilisation'],
   list_limit_requests: [
     'ID', 'customer_ID', 'currentLimit', 'requestedLimit', 'reason', 'requestedBy',
     'status', 'approverLevel', 'createdAt', 'decidedBy', 'customerName'
+  ],
+  get_portfolio_summary: [
+    'source', 'retrievedAt', 'portfolio', 'exposureByCountry', 'exposureByCompanyCode'
+  ],
+  get_customer_approval_history: ['source', 'retrievedAt', 'customerId', 'requests'],
+  get_monitoring_alerts: ['source', 'retrievedAt', 'status', 'alerts'],
+  get_data_ingestion_status: ['source', 'retrievedAt', 'sources', 'syntheticMockSapFixture'],
+  get_mock_sap_records: ['source', 'retrievedAt', 'entityType', 'records'],
+  preview_credit_workflow: [
+    'workflowId', 'name', 'source', 'executionAvailable', 'requiresHumanConfirmation',
+    'status', 'limitations', 'steps', 'retrievedAt'
   ],
   prepare_limit_change: ['requiresHumanApproval', 'proposal']
 });
@@ -220,7 +232,7 @@ function validateDependencies(tasks) {
       }
       const inputReferences = references.filter(value => value.$fromTask === dependency);
       if (inputReferences.some(inputReference =>
-        taskById.get(dependency).toolName !== 'list_customers_over_threshold'
+        !['list_customers_over_threshold', 'search_customers'].includes(taskById.get(dependency).toolName)
         || inputReference.field !== 'ID'
         || !taskById.get(dependency).completionCriteria.requiredFields.includes(inputReference.field))) {
         throw new TypeError(`Task ${task.taskId} references a field not guaranteed by task ${dependency}.`);

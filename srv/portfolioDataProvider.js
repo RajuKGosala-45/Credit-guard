@@ -3,6 +3,7 @@ const { classifyCustomer } = require('./rules');
 const { AbapClient } = require('./integrations/abap/client');
 const { createAgentCustomerProvider } = require('./integrations/abap/customer-provider');
 const { latestCanonicalSnapshot } = require('./ingestionService');
+const { getConfiguredDataSource } = require('./dataSource');
 
 function assertReader(user) {
   if (!user || user._is_anonymous || user._is_privileged || !user.id || !user.is?.('CreditReader')) {
@@ -24,7 +25,7 @@ function normalizeAbapAnalysis(record) {
 function createPortfolioDataProvider({
   db,
   user,
-  source = process.env.CREDIT_GUARD_AGENT_DATA_SOURCE || 'local',
+  source = getConfiguredDataSource(),
   abapClient
 } = {}) {
   assertReader(user);

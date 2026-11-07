@@ -2,6 +2,7 @@ const { randomBytes } = require('crypto');
 
 const MAX_REASON_LENGTH = 500;
 const MAX_REQUESTER_LENGTH = 100;
+const MAX_IDEMPOTENCY_KEY_LENGTH = 160;
 
 function validateLimitRequest(input) {
   const customerId = typeof input?.customerId === 'string' ? input.customerId.trim() : '';
@@ -36,10 +37,22 @@ function validateActorId(actorId) {
   return actorId;
 }
 
+function validateIdempotencyKey(value) {
+  const key = typeof value === 'string' ? value.trim() : '';
+  if (!key || key.length > MAX_IDEMPOTENCY_KEY_LENGTH || /[\u0000-\u001f\u007f]/.test(key)) {
+    const error = new TypeError(`The idempotency key must be 1-${MAX_IDEMPOTENCY_KEY_LENGTH} valid characters.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return key;
+}
+
 module.exports = {
+  MAX_IDEMPOTENCY_KEY_LENGTH,
   MAX_REASON_LENGTH,
   MAX_REQUESTER_LENGTH,
   createLimitRequestId,
   validateActorId,
+  validateIdempotencyKey,
   validateLimitRequest
 };

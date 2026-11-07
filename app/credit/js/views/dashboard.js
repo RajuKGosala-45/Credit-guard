@@ -6,11 +6,7 @@ export function renderKpis(kpis) {
   const values = [
     ['Total exposure', money(kpis.totalExposure), `${kpis.customerCount} customers`],
     ['Total credit limit', money(kpis.totalLimit), multiCurrency ? 'See the currency-specific totals' : 'Across five company codes'],
-    ['Available credit', money(kpis.availableCredit), 'Credit limit less exposure; shown by currency'],
     ['Overall utilisation', multiCurrency ? 'Multiple currencies' : formatPercent(kpis.overallUtilisation), 'Exposure ÷ total limit'],
-    ['Approaching limits', kpis.warningCustomers, 'At least 80% and below the limit'],
-    ['Breached limits', kpis.customersBreached, 'At or above 100% utilisation'],
-    ['Critical-risk customers', kpis.criticalCustomers || 0, 'At or above 120% utilisation'],
     ['Overdue invoices', kpis.overdueInvoiceCount || 0, `${kpis.overdueRiskCustomers || 0} customers with elevated overdue share`]
   ];
   if (multiCurrency) {
@@ -25,9 +21,9 @@ export function renderKpis(kpis) {
   ).join('');
 }
 
-export function renderExposure(dashboard, group) {
+export function renderExposure(dashboard, group, selector = '#exposure-list') {
   const rows = dashboard?.exposure?.[group] || [];
-  const host = document.querySelector('#exposure-list');
+  const host = document.querySelector(selector);
   if (!rows.length) {
     host.innerHTML = '<p class="empty-state">No exposure data yet. Confirm customers and open items are seeded.</p>';
     return;
@@ -46,7 +42,8 @@ export function renderExposure(dashboard, group) {
 export function handleExposureGroup(event, dashboard, onChange) {
   const button = event.target.closest('[data-group]');
   if (!button) return;
-  document.querySelectorAll('[data-group]').forEach(item => item.classList.toggle('selected', item === button));
+  document.querySelectorAll('.analysis-exposure-groups [data-group]')
+    .forEach(item => item.classList.toggle('selected', item === button));
   onChange(button.dataset.group);
   renderExposure(dashboard, button.dataset.group);
 }

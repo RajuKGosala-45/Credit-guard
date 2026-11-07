@@ -81,7 +81,7 @@ All authenticated `CreditReader` users can view portfolio-wide monitoring summar
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | GET | `/api/limit-requests[?status=Pending]` | `CreditReader` | List requests, optionally filtered by `Pending`, `Approved`, or `Rejected`. |
-| POST | `/api/limit-requests` | `CreditRequester` | Create a pending request. |
+| POST | `/api/limit-requests` | `CreditRequester` | Create a pending request; requires an `Idempotency-Key` header. |
 | POST | `/api/limit-requests/:id/decision` | Authenticated eligible approver | Approve or reject a pending request. |
 | GET | `/api/limit-requests/:id/history` | `CreditReader` | Read immutable decision audit entries. |
 
@@ -94,6 +94,8 @@ Create-request body:
   "reason": "Renewed customer contract"
 }
 ```
+
+For each logical submission, send a newly generated `Idempotency-Key` (1-160 characters, without control characters) and reuse it for retries. Keys are scoped to the authenticated requester. Repeating the same key and normalized request payload returns the existing request with status `201` and response header `Idempotency-Replayed: true`; using that key with a different payload returns `409 Conflict`. A new key always represents a separate submission, even when customer and request details match. Validation failures do not reserve the key.
 
 Decision body:
 
@@ -122,7 +124,11 @@ Decision must be `Approved` or `Rejected`; a nonblank reason of at most 500 char
 
 Chat messages are limited to 1,000 characters; extracted context is limited to 20,000 characters. Uploaded files are processed in memory and are not stored by the application. When configured, document/chat content can be sent to the external LLM provider.
 
-Structured chat responses include a public plan without tool inputs, safe task results, and an `executionSummary` with execution ID, plan status, completed/failed/blocked/pending counts, sanitized failures, and recovery availability. Existing `reply`, `offline`, `preparedActions`, and `execution` fields remain. Errors include a safe execution summary when one is available.
+Structured chat responses include a public plan without tool inputs, safe task results, and an `executionSummary` with execution ID, plan status, completed/failed/blocked/pending counts, sanitized failures, and recovery availability. Responses identify the actual `provider` (`gemini`, `anthropic`, or `offline`), whether fallback occurred, `modulesUsed`, and safe `dataSourcesUsed` provenance. `workflowPreview` is returned only when requested; it is a preview and does not execute or schedule steps.
+
+The assistant’s server-side, `CreditReader`-authorized tools reuse existing credit, monitoring, alert, approval, source-registry, and ingestion stores. Customer search returns limited identity matches before financial details are retrieved; calculated exposure, utilization, overdue amounts, and risk conditions remain backend-authoritative. Source-status output excludes authentication and configuration references. Mock SAP fixture records are explicitly synthetic and are not live SAP data.
+
+The supported `mock_sap_risk_review` workflow preview describes existing extraction, validation, monitoring, and report steps, dependencies, expected results, and role requirements. It does not call extraction or monitoring APIs, send notifications, or create a reusable scheduled workflow. Operators must perform protected actions through their existing role-checked routes. There is no unattended workflow scheduler.
 
 Execution records are owner-scoped. The detail endpoint omits stored tool inputs and recovery-only customer IDs. Recovery validates the saved plan version and claims the execution with a conditional database update; it never repeats completed work and resumes only eligible read-only tasks. A stale running task requires manual review. Proposal tasks are never retried or automatically resumed. Read-only retries are bounded to two retries for transient network failures, timeouts, HTTP 429, and HTTP 500/502/503/504 responses; authentication, authorization, validation, and proposal failures are not retried. The 20-second overall execution timeout and twelve-tool-call budget include retries.
 

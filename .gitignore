@@ -49,3 +49,9 @@ service-key*.json
 
 .DS_Store
 Thumbs.db
+
+/cf.exe
+/cf8.exe
+/mta_archives/
+/test-results.json
+/test-gemini.js

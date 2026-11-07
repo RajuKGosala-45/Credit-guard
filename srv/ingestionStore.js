@@ -1,6 +1,8 @@
 const { randomUUID } = require('crypto');
 const cds = require('@sap/cds');
 const { SELECT, INSERT, UPDATE } = cds.ql;
+const { MOCK_SAP_SOURCE_ID } = require('./sourceRegistry');
+const { projectMockSapRecords } = require('./integrations/mock-sap/projection');
 
 const SUCCESS_STATUSES = new Set(['SUCCEEDED', 'SUCCEEDED_WITH_WARNINGS']);
 const RUN_STATUSES = new Set([...SUCCESS_STATUSES, 'PARTIAL', 'FAILED']);
@@ -207,6 +209,9 @@ async function completeIngestionRun(db, runId, {
     }
     const entityTypes = JSON.parse(run.rowCounts || '{}').entityTypes || [];
     if (shouldPromote) {
+      if (run.sourceId === MOCK_SAP_SOURCE_ID) {
+        rowCounts.mockProjection = await projectMockSapRecords(tx, records);
+      }
       for (const entityType of entityTypes) {
         await tx.run(UPDATE('credit.CanonicalRecords')
           .set({ active: false })

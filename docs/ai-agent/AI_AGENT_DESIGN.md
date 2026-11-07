@@ -4,11 +4,11 @@
 
 `srv/agent.js` provides an `AgentController` and validated tool registry. Tools cover customer lookup, utilization-threshold listing, exposure grouping, persisted monitoring analysis, request listing, proposal preparation, and optional read-only ABAP customer analysis.
 
-The controller uses Anthropic to create a structured task plan, validates it against the server-owned tool registry, and executes validated tasks sequentially. The default global limits remain six model calls, twelve tool invocations, and a 20-second overall timeout. Tool inputs are checked server-side and tool permissions are derived from the current CAP user at execution time. Portfolio calculations come from the deterministic rules and credit service, not model-generated financial arithmetic.
+The controller uses the configured model provider to create a structured task plan, validates it against the server-owned tool registry, and executes validated tasks sequentially. The default global limits remain six model calls, twelve tool invocations, and a 20-second overall timeout. Tool inputs are checked server-side and tool permissions are derived from the current CAP user at execution time. Portfolio calculations come from the deterministic rules and credit service, not model-generated financial arithmetic.
 
 ## Provider and offline mode
 
-`srv/llm.js` implements the provider interface and an Anthropic adapter. No API key is required for local development. Without a configured provider, deterministic offline replies call the same registered tools but cannot interpret arbitrary natural-language requests as flexibly as a language model.
+`srv/llm.js` implements Anthropic and Gemini adapters, selected with `LLM_PROVIDER` (`anthropic`, `gemini`, or `offline`; default `anthropic`). Set `ANTHROPIC_API_KEY` for Anthropic or `GEMINI_API_KEY` for Gemini; without the selected provider's key, the agent uses offline behavior. The optional shared `LLM_MODEL` overrides the selected provider's built-in model default, and `LLM_TIMEOUT_MS` controls its request timeout. No API key is required for local offline development. Deterministic offline replies call the same registered tools but cannot interpret arbitrary natural-language requests as flexibly as a language model.
 
 Provider failure during plan generation may fall back to the existing deterministic offline replies; this mode does not produce a structured plan. Provider failure during final response generation preserves the completed task outcomes and returns a deterministic execution summary. Execution metadata records fallback and its category. Missing provider configuration is also recorded as an offline fallback. The provider timeout defaults to 15 seconds and accepts positive whole milliseconds up to 120 seconds. Provider credentials remain server-side.
 
@@ -110,7 +110,7 @@ Failed results require an error category; successful results cannot carry one. E
 
 ### Phase 2: integrated planning and sequential execution
 
-The agent asks Anthropic for a plan using a server-authored planning-tool schema. The model cannot define tools or permissions. `buildPlan` adds a server-generated plan ID, status, and attempt counters, then `validatePlan` checks the result against the existing `toolDefinitions`. Invalid plans are rejected before any business tool runs. Clarification questions are returned without execution.
+The agent asks the configured provider for a plan using a server-authored planning-tool schema. The model cannot define tools or permissions. `buildPlan` adds a server-generated plan ID, status, and attempt counters, then `validatePlan` checks the result against the existing `toolDefinitions`. Invalid plans are rejected before any business tool runs. Clarification questions are returned without execution.
 
 Validated tasks execute sequentially through the existing registry. The registry continues to validate each input and perform the authenticated CAP user's role check at the moment of execution; a plan cannot grant access. A tool failure marks that task failed, blocks its dependents, and allows independent tasks to continue. Dynamic customer-detail fan-out counts each registered-tool call, including retries, against the global twelve-call limit. When the budget is exhausted, remaining work is reported as failed/blocked rather than complete.
 

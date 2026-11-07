@@ -1,6 +1,7 @@
 const cds = require('@sap/cds');
 const { ENTITY_TYPES } = require('./canonicalData');
 const { ConnectorError, createAbapODataConnector } = require('./connectorManager');
+const { createMockSapConnector } = require('./integrations/mock-sap/connector');
 
 const DEFAULT_PAGE_SIZE = 250;
 const MAX_PAGE_SIZE = 1000;
@@ -796,6 +797,10 @@ function createConfiguredConnectors(options = {}) {
       connector: createAbapODataConnector({ client: options.abapClient })
     });
   }
+  adapters.push({
+    sourceType: 'MOCK_SAP_SIMULATOR',
+    connector: createMockSapConnector(options.mockSap)
+  });
   return adapters;
 }
 

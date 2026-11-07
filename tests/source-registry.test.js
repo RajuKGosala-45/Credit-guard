@@ -45,7 +45,8 @@ test('source registry accepts approved source metadata and owns timestamps', () 
     'SAP_HANA',
     'REST_API',
     'CSV_XLSX',
-    'JSON_XML'
+    'JSON_XML',
+    'MOCK_SAP_SIMULATOR'
   ]);
   for (const [index, sourceType] of SOURCE_TYPES.entries()) {
     registry.register(sourceDefinition({ sourceId: `source-${index}`, sourceType }));

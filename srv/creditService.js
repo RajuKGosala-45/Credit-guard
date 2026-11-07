@@ -1,4 +1,4 @@
-const { randomUUID } = require('crypto');
+const { createHash, randomUUID } = require('crypto');
 const cds = require('@sap/cds');
 const { SELECT, INSERT, UPDATE } = cds.ql;
 const {
@@ -10,8 +10,10 @@ const {
 const {
   createLimitRequestId,
   validateActorId,
+  validateIdempotencyKey,
   validateLimitRequest
 } = require('./limitRequests');
+const { assertCreditLimitWorkflowAvailable } = require('./dataSource');
 
 const hasAnyRole = (user, roles) =>
   Boolean(user && !user._is_anonymous && !user._is_privileged && user.id
@@ -172,6 +174,7 @@ async function listLimitRequests(db, user, status) {
 
 async function prepareLimitChange(db, user, input) {
   requireRole(user, ['CreditRequester', 'CreditAnalyst', 'CreditManager', 'CreditAdmin']);
+  assertCreditLimitWorkflowAvailable();
   const { customerId, requestedLimit, reason } = validateLimitRequest({
     customerId: input?.customerId,
     requestedLimit: input?.requestedLimit,
@@ -193,9 +196,53 @@ async function prepareLimitChange(db, user, input) {
   };
 }
 
-async function createLimitRequest(db, user, input) {
-  const proposal = await prepareLimitChange(db, user, input);
+function limitRequestIdempotencyId(requesterId, idempotencyKey) {
+  return createHash('sha256')
+    .update(JSON.stringify([requesterId, idempotencyKey]))
+    .digest('hex');
+}
+
+function limitRequestPayloadHash(payload) {
+  return createHash('sha256')
+    .update(JSON.stringify([payload.customerId, payload.requestedLimit, payload.reason]))
+    .digest('hex');
+}
+
+async function findIdempotentLimitRequest(db, idempotencyId, requesterId, payloadHash) {
+  const entry = await db.run(SELECT.one.from('credit.LimitRequestIdempotency')
+    .where({ ID: idempotencyId, requester_ID: requesterId }));
+  if (!entry) return null;
+  if (entry.payloadHash !== payloadHash) {
+    const error = new Error('This idempotency key was already used with a different request.');
+    error.statusCode = 409;
+    throw error;
+  }
+  const request = await db.run(SELECT.one.from('credit.LimitRequests')
+    .where({ ID: entry.request_ID, requestedBy: requesterId }));
+  if (!request) {
+    const error = new Error('The idempotent request record is inconsistent.');
+    error.statusCode = 500;
+    throw error;
+  }
+  return request;
+}
+
+async function createLimitRequest(db, user, input, rawIdempotencyKey) {
+  requireRole(user, ['CreditRequester']);
+  assertCreditLimitWorkflowAvailable();
   const requestedBy = validateActorId(user.id);
+  const idempotencyKey = validateIdempotencyKey(rawIdempotencyKey);
+  const payload = validateLimitRequest({
+    customerId: input?.customerId,
+    requestedLimit: input?.requestedLimit,
+    reason: input?.reason
+  });
+  const idempotencyId = limitRequestIdempotencyId(requestedBy, idempotencyKey);
+  const payloadHash = limitRequestPayloadHash(payload);
+  const existing = await findIdempotentLimitRequest(db, idempotencyId, requestedBy, payloadHash);
+  if (existing) return { request: existing, duplicate: true };
+
+  const proposal = await prepareLimitChange(db, user, payload);
   const request = {
     ID: createLimitRequestId(),
     customer_ID: proposal.customerId,
@@ -207,8 +254,22 @@ async function createLimitRequest(db, user, input) {
     approverLevel: proposal.approverLevel,
     createdAt: new Date().toISOString()
   };
-  await db.run(INSERT.into('credit.LimitRequests').entries(request));
-  return request;
+  try {
+    await db.tx(async tx => {
+      await tx.run(INSERT.into('credit.LimitRequests').entries(request));
+      await tx.run(INSERT.into('credit.LimitRequestIdempotency').entries({
+        ID: idempotencyId,
+        request_ID: request.ID,
+        requester_ID: requestedBy,
+        payloadHash
+      }));
+    });
+    return { request, duplicate: false };
+  } catch (error) {
+    const winner = await findIdempotentLimitRequest(db, idempotencyId, requestedBy, payloadHash);
+    if (winner) return { request: winner, duplicate: true };
+    throw error;
+  }
 }
 
 function validateDecisionReason(reason) {
@@ -255,6 +316,7 @@ async function decideLimitRequest(db, user, requestId, input) {
     throw error;
   }
 
+  assertCreditLimitWorkflowAvailable();
   const decidedBy = validateActorId(user.id);
   const decisionReason = validateDecisionReason(input.reason);
   const decidedAt = new Date().toISOString();

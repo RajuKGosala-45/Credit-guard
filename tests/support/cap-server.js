@@ -1,21 +1,30 @@
 const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
+const { randomInt } = require('node:crypto');
 
 async function unusedPort() {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const { port } = server.address();
-  await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-  return port;
+  const [minimum, maximum] = process.platform === 'win32' ? [30000, 45000] : [20000, 30000];
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const port = randomInt(minimum, maximum);
+    const server = net.createServer();
+    try {
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(port, '127.0.0.1', resolve);
+      });
+      await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      return port;
+    } catch (error) {
+      if (error.code !== 'EADDRINUSE') throw error;
+    }
+  }
+  throw new Error('Could not reserve a free port for the CAP test server.');
 }
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-async function startCapServer() {
+async function startCapServer({ env = {}, probePath = '/api/dashboard' } = {}) {
   const port = await unusedPort();
   const origin = `http://localhost:${port}`;
   const entryPoint = path.join(
@@ -28,7 +37,14 @@ async function startCapServer() {
   );
   const child = spawn(process.execPath, [entryPoint, '--port', String(port)], {
     cwd: process.cwd(),
-    env: { ...process.env, ANTHROPIC_API_KEY: '', AGENT_MEMORY_ENABLED: 'true' },
+    env: {
+      ...process.env,
+      ANTHROPIC_API_KEY: '',
+      GEMINI_API_KEY: '',
+      LLM_PROVIDER: 'offline',
+      AGENT_MEMORY_ENABLED: 'true',
+      ...env
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
@@ -43,7 +59,7 @@ async function startCapServer() {
     }
 
     try {
-      const response = await fetch(`${origin}/api/dashboard`, {
+      const response = await fetch(`${origin}${probePath}`, {
         headers: {
           authorization: `Basic ${Buffer.from('requester:test').toString('base64')}`
         }

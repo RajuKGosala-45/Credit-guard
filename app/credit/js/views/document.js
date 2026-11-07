@@ -33,7 +33,14 @@ export async function handleDocumentSubmit(event, analyze, messages, onAnalyzed)
       extractedCharacters: result.extractedCharacters,
       truncated: result.truncated
     });
-    messages.push({ role: 'assistant', text: result.reply });
+    messages.push({
+      role: 'assistant',
+      text: result.reply,
+      provider: result.provider,
+      modulesUsed: result.modulesUsed,
+      dataSourcesUsed: result.dataSourcesUsed,
+      providerFallbackReason: result.providerFallback ? result.providerFallbackReason : null
+    });
     renderChat(messages);
     status.textContent = `${result.filename} read (${result.extractedCharacters.toLocaleString('en-IN')} characters). Follow-up questions use this document until it is removed.${result.truncated ? ' Only the first 20,000 characters were analyzed.' : ''}`;
     document.querySelector('#clear-document').disabled = false;

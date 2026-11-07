@@ -51,9 +51,12 @@ async function generateMonitoringSummary(result, { provider, signal } = {}) {
   let selectedProvider = provider;
   try {
     if (selectedProvider === undefined) {
+      const providerName = process.env.LLM_PROVIDER || 'anthropic';
       selectedProvider = createLlmProvider({
-        providerName: process.env.LLM_PROVIDER || 'anthropic',
-        apiKey: process.env.ANTHROPIC_API_KEY,
+        providerName,
+        apiKey: providerName === 'gemini'
+          ? process.env.GEMINI_API_KEY
+          : process.env.ANTHROPIC_API_KEY,
         model: process.env.LLM_MODEL,
         timeoutMs: process.env.LLM_TIMEOUT_MS
       });

@@ -57,6 +57,7 @@ function mockDatabase() {
             : openItems;
           return rows.map(row => ({ ...row }));
         }
+        if (table === 'credit.Payments') return [];
         if (table === 'credit.LimitRequests') return [];
       }
 

@@ -67,7 +67,7 @@ function renderFindings(findings) {
   </tbody></table>`;
 }
 
-function renderHistory(runs) {
+function renderHistory(runs, canOperate) {
   const host = document.querySelector('#monitoring-history');
   if (!runs.length) {
     host.innerHTML = '<p class="empty-state">No monitoring history is available.</p>';
@@ -80,7 +80,10 @@ function renderHistory(runs) {
       <td><span class="chip ${statusClass(run.status)}">${escapeHTML(run.status)}</span></td>
       <td>${escapeHTML(run.source || '—')}</td>
       <td>${escapeHTML(run.summary?.customersMonitored ?? '—')}</td>
-      <td>${escapeHTML(run.freshness || '—')}</td>
+      <td>${escapeHTML(run.freshness || '—')}${canOperate && ['FAILED', 'PARTIAL', 'STALE'].includes(run.status)
+        && run.recoveryStatus === 'AVAILABLE'
+        ? ` <button class="button secondary" type="button" data-monitoring-recovery="${escapeHTML(run.id)}">Recover</button>`
+        : ''}</td>
     </tr>`).join('')}
   </tbody></table>`;
 }
@@ -107,5 +110,5 @@ export function renderMonitoring({ summary, runs, alerts, findings }) {
       : '';
   renderAlerts(alerts, canOperate);
   renderFindings(findings);
-  renderHistory(runs);
+  renderHistory(runs, canOperate);
 }

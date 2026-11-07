@@ -9,8 +9,11 @@ const SOURCE_TYPES = Object.freeze([
   'SAP_HANA',
   'REST_API',
   'CSV_XLSX',
-  'JSON_XML'
+  'JSON_XML',
+  'MOCK_SAP_SIMULATOR'
 ]);
+
+const MOCK_SAP_SOURCE_ID = 'MOCK-S4-001';
 
 const SOURCE_FIELDS = Object.freeze([
   'sourceId',
@@ -165,6 +168,7 @@ function createSourceRegistry({ now = () => new Date() } = {}) {
 }
 
 module.exports = {
+  MOCK_SAP_SOURCE_ID,
   SOURCE_TYPES,
   createSourceRegistry,
   validateSourceDefinition

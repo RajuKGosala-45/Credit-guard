@@ -32,13 +32,23 @@ const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const MAX_CANONICAL_TEXT_LENGTH = 1000;
+const OPTIONAL_ENRICHMENT_FIELDS = new Set([
+  'country',
+  'currency',
+  'riskClass',
+  'lastReviewDate'
+]);
 
 const ENTITY_FIELDS = Object.freeze({
   CUSTOMER: Object.freeze({
     customerId: 'identifier',
     sourceCustomerId: 'identifier',
     customerName: 'text',
-    companyCode: 'optionalText'
+    companyCode: 'optionalText',
+    country: 'optionalText',
+    currency: 'optionalCurrency',
+    riskClass: 'optionalText',
+    lastReviewDate: 'optionalDate'
   }),
   CREDIT_ACCOUNT: Object.freeze({
     accountId: 'identifier',
@@ -246,6 +256,7 @@ function mapCanonicalRecord(entityType, sourceRecord, mapping, provenance) {
   for (const [targetField, type] of Object.entries(fields)) {
     const sourceField = mapping[targetField];
     if (!sourceField) {
+      if (OPTIONAL_ENRICHMENT_FIELDS.has(targetField)) continue;
       issues.push(issue(
         type.startsWith('optional') ? 'OPTIONAL_FIELD_UNMAPPED' : 'MISSING_REQUIRED_FIELD_MAPPING',
         targetField,

@@ -53,7 +53,7 @@ See [System architecture](docs/architecture/SYSTEM_ARCHITECTURE.md) for runtime 
 - Plain HTML, CSS, and JavaScript ES modules.
 - SAP Cloud SDK connectivity and HTTP client for Destination-based ABAP calls.
 - Node.js built-in test runner (`node:test`).
-- Optional Anthropic provider adapter; it is not required for offline demo mode.
+- Optional Anthropic and Gemini provider adapters; neither is required for offline demo mode.
 
 ## 7. Repository Structure
 
@@ -134,7 +134,7 @@ For non-Windows shells, use `npm ci` and `npm run dev`. Optional environment set
 
 ## 15. Environment Configuration
 
-The assistant runs offline by default when `ANTHROPIC_API_KEY` is unset. Provider, model, timeout, and optional memory settings are described in [Deployment and configuration](docs/deployment/DEPLOYMENT_GUIDE.md). The ABAP connector reads its Destination name and OData paths from environment variables; local use still requires a resolvable Destination configuration.
+The assistant supports `anthropic`, `gemini`, and `offline` through `LLM_PROVIDER` (default: `anthropic`). It runs offline when the selected provider's API key is unset. Configure `ANTHROPIC_API_KEY` for Anthropic or `GEMINI_API_KEY` for Gemini. `LLM_MODEL` optionally overrides the selected provider's model; leave it unset to use the provider's built-in default. `LLM_TIMEOUT_MS` and optional memory settings are also documented in [Deployment and configuration](docs/deployment/DEPLOYMENT_GUIDE.md). Keep API keys in an untracked local `.env` or a secret manager, never in tracked files. The ABAP connector reads its Destination name and OData paths from environment variables; local use still requires a resolvable Destination configuration.
 
 ## 16. Running the Application
 
@@ -177,7 +177,7 @@ See [API reference](docs/api/API_REFERENCE.md) for routes, authorization, payloa
 - A BTP Job Scheduler binding and protected trigger are present, but the recurring job and service-role assignment must be provisioned externally. External email/SMS/push delivery is not configured.
 - The ABAP connector and BTP deployment have not been validated against a live tenant. Source timestamps are unknown unless the upstream service supplies them.
 - Payment history is synthetic local demo data only; the ABAP provider has no payment mapping. The monitoring workflow does not execute credit actions.
-- Only the Anthropic LLM adapter is implemented.
+- Anthropic and Gemini LLM adapters are implemented; live provider use requires the corresponding server-side API key.
 
 ## 20. Future Enhancements
 

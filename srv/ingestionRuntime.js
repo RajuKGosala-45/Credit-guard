@@ -8,6 +8,11 @@ const {
   createConfiguredConnectors
 } = require('./configuredConnectors');
 const { ConnectorError, createConnectorManager } = require('./connectorManager');
+const {
+  CONFIGURATION_REFERENCE: MOCK_SAP_CONFIGURATION_REFERENCE,
+  getMockSapSourceConfiguration,
+  getMockSapSourceDefinition
+} = require('./integrations/mock-sap/connector');
 const { ingestSource, latestCanonicalSnapshot } = require('./ingestionService');
 
 function createIngestionRuntime({ db, configurationResolver, adapters = [] } = {}) {
@@ -170,6 +175,13 @@ function createConfiguredIngestionRuntime({
   );
   const sourceConfigurations = isRecord(trustedSettings.sources) ? trustedSettings.sources : {};
   const configurationResolver = async source => {
+    if (source.sourceId === getMockSapSourceDefinition().sourceId) {
+      if (source.sourceType !== 'MOCK_SAP_SIMULATOR'
+        || source.configurationReference !== MOCK_SAP_CONFIGURATION_REFERENCE) {
+        throw configurationUnavailable();
+      }
+      return getMockSapSourceConfiguration();
+    }
     const config = sourceConfigurations[source.configurationReference];
     if (!isRecord(config)) throw configurationUnavailable();
     return config;

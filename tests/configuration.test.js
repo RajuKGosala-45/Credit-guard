@@ -66,7 +66,7 @@ test('CAP production XSUAA authentication fails closed without a bound service',
   assert.match(result.stdout, /no XSUAA instance bound/i);
 });
 
-test('production startup rejects SQLite, mocked authentication, and missing service bindings', () => {
+test('production startup rejects SQLite, mocked authentication, and missing ABAP bindings', () => {
   const production = {
     profiles: ['production'],
     env: {
@@ -82,16 +82,56 @@ test('production startup rejects SQLite, mocked authentication, and missing serv
   assert.throws(() => validateProductionBindings({
     ...production,
     env: {
-      ABAP_DESTINATION_NAME: 'CREDIT_GUARD_ABAP',
-      CREDIT_GUARD_AGENT_DATA_SOURCE: 'local',
+      ...production.env,
+      CREDIT_GUARD_SYNTHETIC_DEMO: 'true',
       VCAP_SERVICES: JSON.stringify({
         hana: [{}], xsuaa: [{}], destination: [{}], jobscheduler: [{}]
       })
     }
-  }), /ABAP customer data provider/i);
+  }), /cannot be enabled with the ABAP data source/i);
+
+  assert.throws(() => validateProductionBindings({
+    ...production,
+    env: {
+      ...production.env,
+      VCAP_SERVICES: JSON.stringify({ hana: [{}], xsuaa: [{}], jobscheduler: [{}] })
+    }
+  }), /Missing required production service bindings \(destination\)/i);
 });
 
-test('production startup requires bound HANA, XSUAA, Destination service, and ABAP data source', () => {
+test('production startup permits explicitly opted-in HANA synthetic demo without ABAP binding', () => {
+  const result = validateProductionBindings({
+    profiles: ['production'],
+    dbKind: 'hana',
+    authKind: 'xsuaa',
+    env: {
+      CREDIT_GUARD_AGENT_DATA_SOURCE: 'local',
+      CREDIT_GUARD_SYNTHETIC_DEMO: 'true',
+      VCAP_SERVICES: JSON.stringify({
+        hana: [{}],
+        xsuaa: [{}],
+        jobscheduler: [{}]
+      })
+    }
+  });
+  assert.deepEqual(result, { production: true });
+
+  for (const optIn of [undefined, 'false', 'TRUE']) {
+    const env = {
+      CREDIT_GUARD_AGENT_DATA_SOURCE: 'local',
+      VCAP_SERVICES: JSON.stringify({ hana: [{}], xsuaa: [{}], jobscheduler: [{}] })
+    };
+    if (optIn !== undefined) env.CREDIT_GUARD_SYNTHETIC_DEMO = optIn;
+    assert.throws(() => validateProductionBindings({
+      profiles: ['production'],
+      dbKind: 'hana',
+      authKind: 'xsuaa',
+      env
+    }), /CREDIT_GUARD_SYNTHETIC_DEMO=true/i);
+  }
+});
+
+test('production startup requires HANA, XSUAA, Destination, and Job Scheduler bindings in ABAP mode', () => {
   const result = validateProductionBindings({
     profiles: ['production'],
     dbKind: 'hana',
@@ -108,6 +148,17 @@ test('production startup requires bound HANA, XSUAA, Destination service, and AB
     }
   });
   assert.deepEqual(result, { production: true });
+});
+
+test('MTA selects explicit HANA synthetic demo mode and includes HDI table data generation', () => {
+  const mta = yaml.parse(readFileSync(path.join(root, 'mta.yaml'), 'utf8'));
+  const server = mta.modules.find(module => module.name === 'credit-guard-srv');
+  assert.equal(server.properties.CDS_ENV, 'production');
+  assert.equal(server.properties.CREDIT_GUARD_AGENT_DATA_SOURCE, 'local');
+  assert.equal(server.properties.CREDIT_GUARD_SYNTHETIC_DEMO, 'true');
+  assert.equal(server.properties.ABAP_DESTINATION_NAME, undefined);
+  const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  assert.match(packageJson.scripts['build:cf'], /contentHdbtabledata=true/);
 });
 
 test('App Router protects application routes and exposes only health routes anonymously', () => {
@@ -139,13 +190,13 @@ test('App Router protects application routes and exposes only health routes anon
   }
   const server = mta.modules.find(module => module.name === 'credit-guard-srv');
   assert.equal(server.parameters['health-check-http-endpoint'], '/health/ready');
-  assert.equal(server.properties.ABAP_DESTINATION_NAME, 'CREDIT_GUARD_ABAP');
-  assert.equal(server.properties.CREDIT_GUARD_AGENT_DATA_SOURCE, 'abap');
+  assert.equal(server.properties.CREDIT_GUARD_AGENT_DATA_SOURCE, 'local');
+  assert.equal(server.properties.CREDIT_GUARD_SYNTHETIC_DEMO, 'true');
   assert.equal(server.properties.MONITORING_WORKER_DRAIN_TIMEOUT_MS, '8000');
   const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(packageJson.engines.node, routerPackage.engines.node);
   const packageLock = JSON.parse(readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
   assert.equal(packageLock.packages[''].engines.node, packageJson.engines.node);
-  assert.match(packageJson.scripts['build:cf'], /contentHdbtabledata=false/);
+  assert.match(packageJson.scripts['build:cf'], /contentHdbtabledata=true/);
   assert.match(packageJson.scripts['build:cf'], /cpSync\('app\/credit','gen\/srv\/app\/credit'/);
 });

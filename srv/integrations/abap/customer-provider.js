@@ -1,9 +1,10 @@
 const creditService = require('../../creditService');
+const { getConfiguredDataSource } = require('../../dataSource');
 
 function createAgentCustomerProvider({
   db,
   user,
-  source = process.env.CREDIT_GUARD_AGENT_DATA_SOURCE || 'local',
+  source = getConfiguredDataSource(),
   abapClient
 } = {}) {
   if (source === 'abap') {

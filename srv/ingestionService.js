@@ -7,6 +7,7 @@ const {
   mapCanonicalRecord
 } = require('./canonicalData');
 const { ConnectorError } = require('./connectorManager');
+const { MOCK_SAP_SOURCE_ID } = require('./sourceRegistry');
 const {
   completeIngestionRun,
   claimIngestionSource,
@@ -252,6 +253,14 @@ async function ingestSource({
   if (entityTypes.some(entity => !source.supportedEntities.includes(entity))) {
     throw new ConnectorError('Requested entity is not enabled for this source.', {
       category: 'entity_not_supported',
+      statusCode: 400
+    });
+  }
+  if (source.sourceId === MOCK_SAP_SOURCE_ID
+    && (entityTypes.length !== source.supportedEntities.length
+      || source.supportedEntities.some(entity => !entityTypes.includes(entity)))) {
+    throw new ConnectorError('Mock SAP extraction requires the complete registered entity scope.', {
+      category: 'mock_sap_scope_incomplete',
       statusCode: 400
     });
   }

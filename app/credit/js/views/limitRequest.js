@@ -1,5 +1,12 @@
 import { escapeHTML, formatINR } from '../utils.js';
 
+export function renderLimitRequestAvailability(session) {
+  const readOnlySapSource = session?.creditLimitWorkflow === 'READ_ONLY';
+  document.querySelector('#source-mode-notice').hidden = !readOnlySapSource;
+  document.querySelector('#request-form').hidden =
+    readOnlySapSource || !session?.permissions?.canRequest;
+}
+
 export function renderRequestCustomers(customers) {
   const select = document.querySelector('#request-customer');
   const previous = select.value;
