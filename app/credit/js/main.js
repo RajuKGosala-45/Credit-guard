@@ -10,20 +10,35 @@ import {
 } from './views/limitRequest.js';
 import { renderApprovals, handleApprovalClick } from './views/approvals.js';
 import { renderChat, handleChatSubmit, explainCustomer } from './views/chat.js';
-import { handleDocumentSubmit, clearDocument } from './views/document.js';
 import { renderMockSap, renderMockSapMonitoring } from './views/mockSap.js';
+import { renderDataSourcesPanel } from './views/connectorsView.js';
 
 const errorHost = document.querySelector('#global-error');
 const pageCopy = Object.freeze({
-  dashboard: ['Credit overview', 'Review the monitored portfolio, customer exposure, and credit-control requests.'],
-  analysis: ['Portfolio analysis', 'Explore exposure by country, company code, and customer.'],
-  approvals: ['Limit approvals', 'Review requests and record authorized human decisions.'],
-  simulator: ['SAP simulator', 'Inspect synthetic Mock SAP source data and persisted extraction outcomes.'],
-  chat: ['AI Credit Assistant', 'Ask cross-module questions using authorized Credit Guard data tools.']
+  chat: [
+    'Credit overview',
+    'Review a controlled portfolio across five legal entities. Data freshness is not supplied by this local demo.'
+  ],
+  dashboard: [
+    'Portfolio & Monitoring',
+    'Run manual credit monitoring, inspect active alerts and customer findings, and submit credit limit change requests.'
+  ],
+  analysis: [
+    'Exposure Analysis',
+    'Review credit exposure by country, company code, and customer across the accounts receivable portfolio.'
+  ],
+  approvals: [
+    'Limit Approvals',
+    'Review pending credit limit requests and record authorized Credit Controller and Finance Head decisions.'
+  ],
+  simulator: [
+    'SAP BTP & HANA CDS',
+    'Inspect synthetic SAP S/4HANA source entities, canonical CAP / HANA ingestion runs, and deterministic monitoring.'
+  ]
 });
 
 function updatePageHeading(tab) {
-  const [title, subtitle] = pageCopy[tab] || pageCopy.dashboard;
+  const [title, subtitle] = pageCopy[tab] || pageCopy.chat;
   document.querySelector('#page-title').textContent = title;
   document.querySelector('#page-subtitle').textContent = subtitle;
 }
@@ -31,6 +46,38 @@ function updatePageHeading(tab) {
 function showError(message) {
   errorHost.hidden = false;
   errorHost.textContent = `${message} If the issue continues, restart the server and reload.`;
+}
+
+function switchTab(tabName) {
+  if (!tabName) return;
+  state.currentTab = tabName;
+  updatePageHeading(state.currentTab);
+  document.querySelectorAll('.tabs [data-tab]').forEach(tab => {
+    const isActive = tab.dataset.tab === state.currentTab;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-current', isActive ? 'page' : 'false');
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === `${state.currentTab}-panel`);
+  });
+  if (state.currentTab === 'dashboard') {
+    Promise.all([loadMonitoring(), loadPortfolio()]).catch(error => showError(error.message));
+  }
+  if (state.currentTab === 'analysis') {
+    loadPortfolio().catch(error => showError(error.message));
+  }
+  if (state.currentTab === 'approvals') {
+    loadApprovals().catch(error => showError(error.message));
+  }
+  if (state.currentTab === 'simulator') {
+    loadMockSap().catch(error => {
+      document.querySelector('#mock-sap-error').textContent = error.message;
+      showError(error.message);
+    });
+  }
+  if (state.currentTab === 'chat') {
+    Promise.all([loadPortfolio(), loadAgentHistory()]).catch(error => showError(error.message));
+  }
 }
 
 function canAttemptExecutionRecovery(execution) {
@@ -59,7 +106,7 @@ async function loadSession() {
   state.session = await api.getSession();
   renderLimitRequestAvailability(state.session);
   renderChat(state.chatMessages, state.agentExecution, state.session.permissions);
-  if (state.currentTab === 'approvals') await loadApprovals();
+  await loadApprovals();
 }
 
 async function loadApprovals() {
@@ -79,12 +126,30 @@ async function loadCustomerApprovalHistory(customerId) {
   return histories.flat();
 }
 
+let initialMonitoringBootstrapped = false;
+
 async function loadMonitoring() {
-  const [summary, runs, alerts] = await Promise.all([
+  let [summary, runs, alerts] = await Promise.all([
     api.getMonitoringSummary(),
     api.getMonitoringRuns(),
     api.getMonitoringAlerts()
   ]);
+  if (!summary.latestRun && summary.canOperate && !initialMonitoringBootstrapped) {
+    initialMonitoringBootstrapped = true;
+    try {
+      const started = await api.runMonitoring();
+      if (started.status === 'QUEUED' || started.status === 'RUNNING') {
+        await api.waitForMonitoringRun(started.id);
+      }
+      [summary, runs, alerts] = await Promise.all([
+        api.getMonitoringSummary(),
+        api.getMonitoringRuns(),
+        api.getMonitoringAlerts()
+      ]);
+    } catch {
+      // Keep default monitoring summary if initial background run cannot complete
+    }
+  }
   renderMonitoring({
     summary,
     runs,
@@ -94,6 +159,10 @@ async function loadMonitoring() {
 }
 
 async function loadMockSap() {
+  const connectorsHost = document.querySelector('#connectors-workspace');
+  if (connectorsHost && !connectorsHost.hasChildNodes()) {
+    renderDataSourcesPanel(connectorsHost).catch(() => {});
+  }
   state.mockSap = await api.getMockSap();
   renderMockSap(state.mockSap, state.session?.permissions);
   if (!state.mockSapMonitoring) {
@@ -103,6 +172,18 @@ async function loadMockSap() {
         : 'Extract source data before running monitoring.';
   }
 }
+
+document.querySelector('#ai-welcome-board')?.addEventListener('click', event => {
+  const promptCard = event.target.closest('[data-agent-prompt]');
+  if (promptCard) {
+    const promptText = promptCard.dataset.agentPrompt;
+    const input = document.querySelector('#chat-input');
+    if (input && promptText) {
+      input.value = promptText;
+      document.querySelector('#chat-form').requestSubmit();
+    }
+  }
+});
 
 document.querySelector('#refresh-mock-sap').addEventListener('click', () =>
   loadMockSap().catch(error => {
@@ -235,15 +316,7 @@ document.querySelector('#monitoring-history').addEventListener('click', async ev
 document.querySelector('.tabs').addEventListener('click', event => {
   const button = event.target.closest('[data-tab]');
   if (!button) return;
-  state.currentTab = button.dataset.tab;
-  updatePageHeading(state.currentTab);
-  document.querySelectorAll('.tabs [data-tab]').forEach(tab => tab.classList.toggle('active', tab === button));
-  document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.id === `${state.currentTab}-panel`));
-  if (state.currentTab === 'approvals') loadApprovals().catch(error => showError(error.message));
-  if (state.currentTab === 'simulator') loadMockSap().catch(error => {
-    document.querySelector('#mock-sap-error').textContent = error.message;
-    showError(error.message);
-  });
+  switchTab(button.dataset.tab);
 });
 
 document.querySelector('.analysis-exposure-groups').addEventListener('click', event =>
@@ -261,8 +334,7 @@ document.querySelector('#customer-list').addEventListener('click', async event =
       const customer = state.customers.find(item => item.ID === action.explainId);
       if (customer) {
         state.selectedCustomer = customer;
-        state.currentTab = 'chat';
-        document.querySelector('.tabs [data-tab="chat"]').click();
+        switchTab('chat');
         await explainCustomer(customer, api.sendChat, state.chatMessages, state.documentContext, state);
       }
     } else if (action?.customer) {
@@ -281,6 +353,22 @@ document.querySelector('#request-form').addEventListener('submit', async event =
 
 document.querySelector('#approvals-list').addEventListener('click', async event => {
   try {
+    const syncBtn = event.target.closest('.sync-sap-btn');
+    if (syncBtn) {
+      const requestId = syncBtn.dataset.requestId;
+      syncBtn.disabled = true;
+      syncBtn.textContent = 'Syncing to SAP…';
+      try {
+        await api.syncV2LimitRequestToSap(requestId);
+        await Promise.all([loadPortfolio(), loadApprovals()]);
+      } catch (err) {
+        showError(`SAP Sync failed: ${err.message}`);
+      } finally {
+        syncBtn.disabled = false;
+        syncBtn.textContent = 'Sync to SAP S/4HANA';
+      }
+      return;
+    }
     const decided = await handleApprovalClick(event, api.decideLimitRequest);
     if (decided) {
       errorHost.hidden = true;
@@ -291,7 +379,8 @@ document.querySelector('#approvals-list').addEventListener('click', async event 
 
 document.querySelector('#chat-form').addEventListener('submit', event =>
   handleChatSubmit(event, api.sendChat, state.chatMessages, state.documentContext, state));
-document.querySelector('#analyze-portfolio').addEventListener('click', () => {
+document.querySelector('#analyze-portfolio').addEventListener('click', async () => {
+  try { await loadMonitoring(); } catch {}
   const input = document.querySelector('#chat-input');
   input.value = 'Analyze the latest monitoring run, explain each high-risk customer, and summarize portfolio exposure and overdue invoices.';
   document.querySelector('#chat-form').requestSubmit();
@@ -434,18 +523,13 @@ document.querySelector('#clear-agent-history').addEventListener('click', async (
     await loadAgentHistory();
   } catch (error) { showError(error.message); }
 });
-document.querySelector('.tabs').addEventListener('click', event => {
-  if (event.target.closest('[data-tab="chat"]')) loadAgentHistory().catch(error => showError(error.message));
+
+document.querySelector('#jump-connectors-btn')?.addEventListener('click', () => {
+  switchTab('simulator');
 });
 
-document.querySelector('#document-form').addEventListener('submit', event =>
-  handleDocumentSubmit(event, api.analyzeDocument, state.chatMessages, context => {
-    state.documentContext = context;
-  }));
-document.querySelector('#clear-document').addEventListener('click', () =>
-  clearDocument(() => { state.documentContext = null; }));
-
+updatePageHeading(state.currentTab);
 renderChat(state.chatMessages, null, state.session?.permissions);
 loadSession()
-  .then(() => Promise.all([loadPortfolio(), loadMonitoring()]))
+  .then(() => Promise.all([loadPortfolio(), loadMonitoring(), loadAgentHistory()]))
   .catch(error => showError(error.message));

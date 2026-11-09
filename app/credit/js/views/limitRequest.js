@@ -35,7 +35,14 @@ export async function handleRequestSubmit(event, createRequest) {
   try {
     const request = await createRequest(payload);
     document.querySelector('#request-form').reset();
-    message.textContent = `Request submitted. Routed to ${request.approverLevel}. Await a human decision in Approvals.`;
+    const approver = request.approverLevel || request.approver_level || 'Credit Controller';
+    const delta = request.delta_pct !== undefined ? ` (Delta: ${request.delta_pct}%)` : '';
+    message.innerHTML = `
+      <strong>Limit Request Submitted!</strong> Request ID: <code>${escapeHTML(request.ID || request.request_id)}</code><br>
+      • Routed Authority: <strong>${escapeHTML(approver)}</strong>${delta}<br>
+      • SAP S/4HANA Segment Target: <code>UKMBP_CMS_SGM.CREDIT_LIMIT</code> (verified: false)<br>
+      • Await human-in-the-loop governance decision in <em>Limit Approvals</em>.
+    `;
     return request;
   } catch (error) {
     message.classList.add('error');

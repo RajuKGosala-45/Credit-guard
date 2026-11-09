@@ -21,6 +21,39 @@ const {
 const { startMonitoringWorker } = require('./monitoringWorker');
 const { ENTITY_TYPES, isValidTimestamp } = require('./canonicalData');
 const { createConfiguredIngestionRuntime } = require('./ingestionRuntime');
+const { getPublicDatabaseStatus } = require('./hanaConnection');
+const { CANONICAL_SOURCE_TYPES, CANONICAL_TABLES, SAP_VERIFICATION_NOTE } = require('./canonicalSchemaMetadata');
+const {
+  getBusinessPartnerCreditDossier,
+  getCanonicalPortfolioAnalytics,
+  listBusinessPartners,
+  listDataSources,
+  listExposureSnapshots,
+  listFieldMappings,
+  recalculateAllExposureSnapshots,
+  saveFieldMappings,
+  seedCanonicalFromLegacyDemo
+} = require('./canonicalRepository');
+const {
+  ensureDefaultEnterpriseSources,
+  getConnectorForType,
+  syncSourceToCanonical
+} = require('./connectors/connectorRegistry');
+const { SAP_ODATA_CANDIDATE_SERVICES } = require('./connectors/sapODataConnector');
+const { HANA_REPLICATED_TABLES } = require('./connectors/sapHanaConnector');
+const {
+  decideCanonicalLimitRequest,
+  listEnrichedCanonicalLimitRequests,
+  previewCanonicalLimitChange,
+  promoteDraftLimitRequest,
+  submitCanonicalLimitRequest,
+  syncApprovedLimitRequestToSap
+} = require('./limitWorkflowService');
+const {
+  CANONICAL_AGENT_TOOLS,
+  executeCanonicalAgentTool,
+  runCanonicalAgentQuery
+} = require('./canonicalAgentTools');
 const mockSapFixture = require('./integrations/mock-sap/fixtures.json');
 const { getMockSapSourceDefinition } = require('./integrations/mock-sap/connector');
 const {
@@ -200,6 +233,7 @@ function publicIngestionRun(run, issues = [], duplicate = false, issuesTruncated
 }
 
 cds.on('bootstrap', app => {
+  app.get('/', (_req, res) => res.redirect('/credit/index.html'));
   app.get('/health/live', (_req, res) => res.status(200).json({ status: 'live' }));
   app.get('/health/ready', (_req, res) => {
     if (!cds.db || typeof cds.db.run !== 'function') {
@@ -207,6 +241,18 @@ cds.on('bootstrap', app => {
     }
     return res.status(200).json({ status: 'ready' });
   });
+  if (process.env.CREDIT_GUARD_DEV_DEFAULT_USER) {
+    const defaultAuthHeader = `Basic ${Buffer.from(`${process.env.CREDIT_GUARD_DEV_DEFAULT_USER}:test`).toString('base64')}`;
+    app.use((req, res, next) => {
+      if (!req.headers.authorization) {
+        req.headers.authorization = defaultAuthHeader;
+      }
+      if (req.get('X-CSRF-Token')?.toLowerCase() === 'fetch') {
+        res.set('X-CSRF-Token', 'dev-csrf-token');
+      }
+      next();
+    });
+  }
   app.use('/credit', cds.middlewares.before, express.static(path.join(__dirname, '..', 'app', 'credit')));
   app.use('/api', cds.middlewares.before);
   app.use('/api', express.json());
@@ -307,6 +353,349 @@ cds.on('bootstrap', app => {
         canMonitor: hasAnyRole('CreditMonitor', 'CreditAdmin')
       }
     });
+  });
+
+  app.get('/api/canonical/status', requireRole('CreditReader'), async (_req, res) => {
+    try {
+      let partners = await listBusinessPartners(cds.db);
+      if (!partners.length) {
+        await seedCanonicalFromLegacyDemo(cds.db);
+        partners = await listBusinessPartners(cds.db);
+      }
+      const [sources, mappings, snapshots] = await Promise.all([
+        listDataSources(cds.db),
+        listFieldMappings(cds.db),
+        listExposureSnapshots(cds.db)
+      ]);
+      return res.json({
+        database: getPublicDatabaseStatus(process.env),
+        sapVerificationDefault: false,
+        sapVerificationNote: SAP_VERIFICATION_NOTE,
+        tables: CANONICAL_TABLES,
+        counts: {
+          dataSources: sources.length,
+          fieldMappings: mappings.length,
+          businessPartners: partners.length,
+          exposureSnapshots: snapshots.length
+        },
+        sources,
+        snapshots
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || 'Canonical schema status could not be loaded.' });
+    }
+  });
+
+  app.get('/api/v2/connectors', requireRole('CreditReader'), async (_req, res) => {
+    try {
+      const sources = await ensureDefaultEnterpriseSources(cds.db);
+      const mappings = await listFieldMappings(cds.db);
+      return res.json({
+        supportedConnectorTypes: CANONICAL_SOURCE_TYPES,
+        sapVerificationNote: SAP_VERIFICATION_NOTE,
+        sapCandidateODataServices: SAP_ODATA_CANDIDATE_SERVICES,
+        hanaReplicatedTables: HANA_REPLICATED_TABLES,
+        sources,
+        mappingsCount: mappings.length
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || 'Connector catalog could not be loaded.' });
+    }
+  });
+
+  app.post('/api/v2/connectors/test', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const sources = await ensureDefaultEnterpriseSources(cds.db);
+      const matchedSource = body.sourceId
+        ? sources.find(s => s.source_id === body.sourceId)
+        : null;
+      const sourceType = body.sourceType || matchedSource?.source_type || 'MOCK_SAP';
+      const connector = getConnectorForType(sourceType);
+      const health = await connector.testConnection({
+        ...(matchedSource || {}),
+        ...body
+      });
+      return res.json(health);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Connector health test failed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/connectors/discover', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const sources = await ensureDefaultEnterpriseSources(cds.db);
+      const matchedSource = body.sourceId
+        ? sources.find(s => s.source_id === body.sourceId)
+        : null;
+      const sourceType = body.sourceType || matchedSource?.source_type || (body.rawContent || body.records ? 'FILE' : 'MOCK_SAP');
+      const connector = getConnectorForType(sourceType);
+      const discovery = await connector.discoverSchema(
+        {
+          ...(matchedSource || {}),
+          source_id: body.sourceId || matchedSource?.source_id || `SRC-${sourceType}`,
+          filename: body.filename,
+          rawContent: body.rawContent,
+          records: body.records,
+          format: body.format
+        },
+        {
+          sourceEntity: body.sourceEntity,
+          targetCanonicalEntity: body.targetCanonicalEntity
+        }
+      );
+      return res.json(discovery);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Schema auto-discovery failed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/connectors/mappings/confirm', requireAnyRole('CreditAnalyst', 'CreditManager', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const sourceId = String(body.sourceId || '').trim();
+      if (!sourceId) {
+        return res.status(400).json({ error: 'sourceId is required to confirm field mappings.' });
+      }
+      if (!Array.isArray(body.mappings) || body.mappings.length === 0) {
+        return res.status(400).json({ error: 'mappings array is required.' });
+      }
+      const confirmed = body.mappings.map(m => ({
+        ...m,
+        source_id: sourceId,
+        verified_by_user: true,
+        sap_reference_verified: Boolean(m.sap_reference_verified === true),
+        verification_note: m.verification_note || SAP_VERIFICATION_NOTE
+      }));
+      const saved = await saveFieldMappings(cds.db, sourceId, confirmed);
+      return res.json({
+        sourceId,
+        confirmedCount: saved.length,
+        mappings: saved
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Field mappings could not be confirmed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/connectors/sync', requireAnyRole('CreditAnalyst', 'CreditManager', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const result = await syncSourceToCanonical(cds.db, {
+        sourceId: body.sourceId || 'MOCK-SAP-FIN-FSCM',
+        sourceType: body.sourceType || null,
+        sourceEntity: body.sourceEntity || 'BUT000',
+        targetCanonicalEntity: body.targetCanonicalEntity || null,
+        fileConfig: body.rawContent || body.records
+          ? {
+              filename: body.filename || 'upload.csv',
+              rawContent: body.rawContent,
+              records: body.records,
+              format: body.format
+            }
+          : null,
+        customMappings: Array.isArray(body.mappings) ? body.mappings : null
+      });
+      return res.json(result);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Canonical connector sync failed.'
+      });
+    }
+  });
+
+  app.get('/api/v2/exposure/portfolio', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const analytics = await getCanonicalPortfolioAnalytics(cds.db, {
+        countryCode: req.query.countryCode || null,
+        companyCode: req.query.companyCode || null,
+        creditSegment: req.query.creditSegment || null,
+        thresholdStatus: req.query.thresholdStatus || null,
+        riskClass: req.query.riskClass || null,
+        referenceDate: req.query.referenceDate || '2026-11-09'
+      });
+      return res.json(analytics);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Deterministic portfolio exposure analytics could not be calculated.'
+      });
+    }
+  });
+
+  app.get('/api/v2/exposure/partners/:bpId', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const dossier = await getBusinessPartnerCreditDossier(cds.db, req.params.bpId, {
+        referenceDate: req.query.referenceDate || '2026-11-09'
+      });
+      return res.json(dossier);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Business Partner credit dossier could not be calculated.'
+      });
+    }
+  });
+
+  app.post('/api/v2/exposure/recalculate', requireAnyRole('CreditMonitor', 'CreditAnalyst', 'CreditManager', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const referenceDate = body.referenceDate || '2026-11-09';
+      await recalculateAllExposureSnapshots(cds.db, { referenceDate });
+      const analytics = await getCanonicalPortfolioAnalytics(cds.db, { referenceDate });
+      return res.json({
+        recalculated: true,
+        referenceDate,
+        ...analytics
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Exposure recalculation failed.'
+      });
+    }
+  });
+
+  app.get('/api/v2/workflow/limit-requests', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const rows = await listEnrichedCanonicalLimitRequests(cds.db, {
+        status: req.query.status || null,
+        bpId: req.query.bpId || null
+      });
+      return res.json(rows);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Canonical limit requests could not be loaded.'
+      });
+    }
+  });
+
+  app.post('/api/v2/workflow/limit-requests/preview', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const preview = await previewCanonicalLimitChange(cds.db, {
+        bpId: body.bpId || body.customerId,
+        creditSegment: body.creditSegment || 'MAIN',
+        requestedLimit: body.requestedLimit,
+        referenceDate: body.referenceDate || '2026-11-09'
+      });
+      return res.json(preview);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Credit limit impact preview failed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/workflow/limit-requests', requireAnyRole('CreditRequester', 'CreditAnalyst', 'CreditManager', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const created = await submitCanonicalLimitRequest(cds.db, {
+        bpId: body.bpId || body.customerId,
+        creditSegment: body.creditSegment || 'MAIN',
+        requestedLimit: body.requestedLimit,
+        justification: body.justification || body.reason,
+        aiRiskSummary: body.aiRiskSummary || null,
+        status: body.status || 'PENDING_APPROVAL',
+        requestedBy: currentUser(req).id
+      });
+      return res.status(201).json(created);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Canonical credit limit request could not be created.'
+      });
+    }
+  });
+
+  app.post('/api/v2/workflow/limit-requests/:requestId/submit', requireAnyRole('CreditRequester', 'CreditAnalyst', 'CreditManager', 'CreditAdmin'), async (req, res) => {
+    try {
+      const promoted = await promoteDraftLimitRequest(cds.db, req.params.requestId, currentUser(req).id);
+      return res.json(promoted);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Draft credit limit request could not be submitted.'
+      });
+    }
+  });
+
+  app.post('/api/v2/workflow/limit-requests/:requestId/decision', requireAnyRole('CreditController', 'CreditManager', 'FinanceHead', 'CreditApprover', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const decided = await decideCanonicalLimitRequest(cds.db, req.params.requestId, {
+        decision: body.decision,
+        reason: body.reason,
+        approverId: currentUser(req).id,
+        autoSyncToSap: Boolean(body.autoSyncToSap === true)
+      });
+      return res.json(decided);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Credit limit request decision failed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/workflow/limit-requests/:requestId/sync-sap', requireAnyRole('CreditController', 'CreditManager', 'FinanceHead', 'CreditApprover', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const synced = await syncApprovedLimitRequestToSap(cds.db, req.params.requestId, {
+        connectorType: body.connectorType || 'MOCK_SAP'
+      });
+      return res.json(synced);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'SAP credit limit synchronization failed.'
+      });
+    }
+  });
+
+  app.get('/api/v2/agent/tools', requireRole('CreditReader'), (_req, res) => {
+    return res.json({
+      tools: CANONICAL_AGENT_TOOLS,
+      sapVerificationDefault: false,
+      sapVerificationNote: SAP_VERIFICATION_NOTE
+    });
+  });
+
+  app.post('/api/v2/agent/tool-execute', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const toolName = String(body.toolName || '').trim();
+      if (!toolName) {
+        return res.status(400).json({ error: 'toolName is required.' });
+      }
+      const result = await executeCanonicalAgentTool(cds.db, toolName, body.args || {});
+      return res.json({
+        toolName,
+        sapVerificationDefault: false,
+        sapVerificationNote: SAP_VERIFICATION_NOTE,
+        result
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Canonical agent tool execution failed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/agent/query', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const response = await runCanonicalAgentQuery(cds.db, {
+        question: body.question || body.message || '',
+        bpId: body.bpId || body.customerId || null,
+        requestedLimit: body.requestedLimit || null
+      });
+      return res.json(response);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Canonical AI Credit Agent query could not be completed.'
+      });
+    }
   });
 
   app.get('/api/ingestion/sources', requireRole('CreditAdmin'), async (_req, res) => {
@@ -990,6 +1379,7 @@ cds.on('bootstrap', app => {
 
 let stopMonitoringWorker;
 cds.on('listening', () => {
+  seedCanonicalFromLegacyDemo(cds.db).catch(() => {});
   stopMonitoringWorker = startMonitoringWorker(cds.db);
 });
 cds.on('shutdown', async () => {

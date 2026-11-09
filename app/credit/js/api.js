@@ -226,3 +226,70 @@ export function analyzeDocument(file) {
   form.append('document', file);
   return request('/api/documents/analyze', { method: 'POST', body: form });
 }
+export const checkGeminiConnectivity = () => request('/api/ai/gemini/connectivity', {
+  method: 'POST',
+  body: JSON.stringify({})
+});
+
+// Phase 6 V2 Canonical, Connectors & Workflow API Client Methods
+export const getV2Connectors = () => request('/api/v2/connectors');
+export const testV2Connector = payload => request('/api/v2/connectors/test', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const discoverV2Schema = payload => request('/api/v2/connectors/discover', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const confirmV2Mappings = payload => request('/api/v2/connectors/mappings/confirm', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const syncV2Connector = payload => request('/api/v2/connectors/sync', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+
+export const getV2PortfolioExposure = (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  return request(`/api/v2/exposure/portfolio${query ? `?${query}` : ''}`);
+};
+export const getV2BusinessPartnerDossier = (bpId, params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  return request(`/api/v2/exposure/partners/${encodeURIComponent(bpId)}${query ? `?${query}` : ''}`);
+};
+export const recalculateV2Exposure = (referenceDate = '2026-11-09') => request('/api/v2/exposure/recalculate', {
+  method: 'POST',
+  body: JSON.stringify({ referenceDate })
+});
+
+export const getV2WorkflowLimitRequests = (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  return request(`/api/v2/workflow/limit-requests${query ? `?${query}` : ''}`);
+};
+export const previewV2LimitChange = payload => request('/api/v2/workflow/limit-requests/preview', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const submitV2LimitRequest = payload => request('/api/v2/workflow/limit-requests', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const submitV2DraftLimitRequest = requestId => request(`/api/v2/workflow/limit-requests/${encodeURIComponent(requestId)}/submit`, {
+  method: 'POST',
+  body: JSON.stringify({})
+});
+export const decideV2LimitRequest = (requestId, payload) => request(`/api/v2/workflow/limit-requests/${encodeURIComponent(requestId)}/decision`, {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const syncV2LimitRequestToSap = (requestId, payload = {}) => request(`/api/v2/workflow/limit-requests/${encodeURIComponent(requestId)}/sync-sap`, {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+
+export const queryV2Agent = payload => request('/api/v2/agent/query', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+

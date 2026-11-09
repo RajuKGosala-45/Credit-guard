@@ -293,3 +293,180 @@ entity MonitoringNotificationOutbox {
       createdAt       : Timestamp not null;
       updatedAt       : Timestamp not null;
 }
+
+// ============================================================================
+// PHASE 1: SAP S/4HANA FIN-FSCM-CR 3-LAYER CANONICAL SCHEMA (RAW -> CANONICAL -> CALCULATION)
+// Note: All SAP table/API references carry verified = false ("verify in SE11/SE16N or SAP Business Accelerator Hub")
+// ============================================================================
+
+entity CG_DATA_SOURCE {
+  key source_id             : String(64);
+      source_name           : String(120) not null;
+      source_type           : String(32) not null; // FILE | SAP_ODATA | SAP_BTP_DEST | HANA | REST_API | MOCK_SAP
+      connection_config_ref : String(160) not null; // Env var or BTP Destination name (never raw secrets)
+      status                : String(24) not null default 'ACTIVE';
+      last_sync_at          : Timestamp;
+      created_at            : Timestamp not null;
+}
+
+entity CG_FIELD_MAPPING {
+  key mapping_id             : String(64);
+      source_id              : String(64) not null;
+      source_entity          : String(120) not null;
+      source_field           : String(120) not null;
+      canonical_entity       : String(64) not null;
+      canonical_field        : String(64) not null;
+      transform_rule         : String(64) default 'NONE'; // DATE_YYYYMMDD | DECIMAL | CURRENCY_ISO | TRIM | PAD_LEFT_10 | NONE
+      confidence             : Decimal(5, 4) not null default 1.0000;
+      verified_by_user       : Boolean not null default false;
+      sap_reference_table    : String(64);
+      sap_reference_field    : String(64);
+      sap_reference_verified : Boolean not null default false;
+      verification_note      : String(256) not null default 'verify in SE11/SE16N or SAP Business Accelerator Hub';
+      updated_at             : Timestamp;
+}
+
+entity CG_RAW_PAYLOAD {
+  key payload_id    : String(64);
+      source_id     : String(64) not null;
+      entity_type   : String(64) not null;
+      raw_json      : LargeString not null;
+      ingested_at   : Timestamp not null;
+      row_hash      : String(64) not null;
+      sync_batch_id : String(64) not null;
+}
+
+// SAP reference: BUT000 / KNA1 / KNB1 (verified: false — verify in SE11/SE16N or SAP Business Accelerator Hub)
+entity CG_BUSINESS_PARTNER {
+  key bp_id              : String(32);
+      source_id          : String(64) not null;
+      external_bp_number : String(32) not null;
+      bp_name            : String(120) not null;
+      country_code       : String(40) not null;
+      company_code       : String(12) not null;
+      risk_class         : String(16);
+      credit_segment     : String(16) not null default 'MAIN';
+      currency           : String(3) not null;
+      status             : String(16) not null default 'ACTIVE';
+      updated_at         : Timestamp not null;
+}
+
+// SAP reference: UKMBP_CMS_SGM / UKMBP_CMS (verified: false — verify in SE11/SE16N or SAP Business Accelerator Hub)
+entity CG_BP_CREDIT_SEGMENT {
+  key bp_id            : String(32);
+  key credit_segment   : String(16);
+      credit_limit     : Decimal(18, 2) not null;
+      currency         : String(3) not null;
+      limit_valid_to   : Date;
+      credit_blocked   : Boolean not null default false;
+      block_reason     : String(120);
+      risk_class       : String(16);
+      last_review_date : Date;
+      source_id        : String(64) not null;
+      updated_at       : Timestamp not null;
+}
+
+// SAP reference: UKM_ITEM / open orders + deliveries + billing + FI-AR (verified: false — verify in SE11/SE16N or SAP Business Accelerator Hub)
+entity CG_CREDIT_EXPOSURE_ITEM {
+  key item_id                    : String(64);
+      bp_id                      : String(32) not null;
+      credit_segment             : String(16) not null default 'MAIN';
+      company_code               : String(12) not null;
+      exposure_category          : String(24) not null; // OPEN_ORDER | OPEN_DELIVERY | OPEN_BILLING | OPEN_INVOICE
+      source_doc_number          : String(40) not null;
+      source_doc_type            : String(24) not null;
+      amount                     : Decimal(18, 2) not null;
+      currency                   : String(3) not null;
+      amount_in_segment_currency : Decimal(18, 2) not null;
+      posting_date               : Date;
+      due_date                   : Date;
+      is_overdue                 : Boolean not null default false;
+      days_overdue               : Integer not null default 0;
+      source_id                  : String(64) not null;
+      updated_at                 : Timestamp not null;
+}
+
+// SAP reference: ACDOCA / BSID (verified: false — verify in SE11/SE16N or SAP Business Accelerator Hub)
+entity CG_OPEN_RECEIVABLE {
+  key receivable_id     : String(64);
+      bp_id             : String(32) not null;
+      company_code      : String(12) not null;
+      accounting_doc_no : String(40) not null;
+      fiscal_year       : String(4) not null;
+      line_item         : String(8) not null;
+      invoice_ref       : String(40);
+      document_date     : Date;
+      baseline_date     : Date;
+      due_date          : Date;
+      amount_doc_curr   : Decimal(18, 2) not null;
+      doc_currency      : String(3) not null;
+      amount_local_curr : Decimal(18, 2) not null;
+      local_currency    : String(3) not null;
+      dunning_level     : Integer not null default 0;
+      dispute_flag      : Boolean not null default false;
+      clearing_status   : String(16) not null default 'OPEN'; // OPEN | CLEARED | PARTIAL
+      source_id         : String(64) not null;
+      updated_at        : Timestamp not null;
+}
+
+// SAP reference: ACDOCA / BSAD (verified: false — verify in SE11/SE16N or SAP Business Accelerator Hub)
+entity CG_PAYMENT_HISTORY {
+  key payment_id     : String(64);
+      bp_id          : String(32) not null;
+      company_code   : String(12) not null;
+      payment_doc_no : String(40) not null;
+      invoice_ref    : String(40);
+      payment_date   : Date not null;
+      due_date       : Date;
+      days_late      : Integer not null default 0;
+      amount         : Decimal(18, 2) not null;
+      currency       : String(3) not null;
+      source_id      : String(64) not null;
+      updated_at     : Timestamp not null;
+}
+
+// CALCULATION LAYER — Deterministic credit exposure & ageing snapshot
+entity CG_EXPOSURE_SNAPSHOT {
+  key snapshot_id            : String(64);
+      bp_id                  : String(32) not null;
+      credit_segment         : String(16) not null;
+      company_code           : String(12) not null;
+      country_code           : String(40) not null;
+      credit_limit           : Decimal(18, 2) not null;
+      open_orders_amount     : Decimal(18, 2) not null default 0;
+      open_deliveries_amount : Decimal(18, 2) not null default 0;
+      open_billing_amount    : Decimal(18, 2) not null default 0;
+      open_ar_amount         : Decimal(18, 2) not null default 0;
+      total_exposure         : Decimal(18, 2) not null;
+      available_credit       : Decimal(18, 2) not null;
+      utilization_pct        : Decimal(9, 2) not null;
+      overdue_amount         : Decimal(18, 2) not null default 0;
+      overdue_count          : Integer not null default 0;
+      ageing_0_30            : Decimal(18, 2) not null default 0;
+      ageing_31_60           : Decimal(18, 2) not null default 0;
+      ageing_61_90           : Decimal(18, 2) not null default 0;
+      ageing_90_plus         : Decimal(18, 2) not null default 0;
+      threshold_status       : String(16) not null; // NORMAL | WARNING | CRITICAL | BREACH | BLOCKED
+      calculated_at          : Timestamp not null;
+      source_id              : String(64) not null;
+}
+
+// WORKFLOW LAYER — Credit limit change requests & SAP sync state
+entity CG_CREDIT_LIMIT_REQUEST {
+  key request_id      : String(32);
+      bp_id           : String(32) not null;
+      credit_segment  : String(16) not null default 'MAIN';
+      company_code    : String(12) not null;
+      current_limit   : Decimal(18, 2) not null;
+      requested_limit : Decimal(18, 2) not null;
+      currency        : String(3) not null;
+      justification   : String(1000) not null;
+      ai_risk_summary : LargeString;
+      status          : String(24) not null default 'PENDING_APPROVAL'; // DRAFT | PENDING_APPROVAL | APPROVED | REJECTED | SYNCED_TO_SAP
+      requested_by    : String(100) not null;
+      approved_by     : String(100);
+      sap_sync_status : String(32) not null default 'NOT_SYNCED';
+      created_at      : Timestamp not null;
+      decided_at      : Timestamp;
+}
+

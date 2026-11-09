@@ -32,21 +32,25 @@ const TOOL_RESULT_FIELDS = Object.freeze({
   getAbapOpenItems: ['source', 'retrievedAt', 'customerId', 'currency', 'openItems'],
   analyzeAbapCreditRisk: ['source', 'retrievedAt', 'customer', 'openItems', 'analysisBasis', 'analysis'],
   list_customers_over_threshold: [
-    'ID', 'name', 'exposure', 'creditLimit', 'utilisation', 'overdueAmount',
-    'overdueShare', 'riskClass', 'flags', 'currency', 'source', 'retrievedAt'
+    'ID', 'name', 'country', 'companyCode', 'exposure', 'creditLimit', 'availableCredit',
+    'utilisation', 'overdueAmount', 'overdueShare', 'overdueInvoiceCount', 'status',
+    'riskClass', 'flags', 'currency', 'source', 'retrievedAt'
   ],
   search_customers: ['ID', 'name', 'country', 'companyCode'],
   get_customer: [
-    'ID', 'name', 'exposure', 'creditLimit', 'utilisation', 'overdueAmount',
-    'overdueShare', 'riskClass', 'flags', 'currency', 'source', 'retrievedAt', 'openItems', 'payments'
+    'ID', 'name', 'country', 'companyCode', 'exposure', 'creditLimit', 'availableCredit',
+    'utilisation', 'overdueAmount', 'overdueShare', 'overdueInvoiceCount', 'status',
+    'riskClass', 'flags', 'currency', 'source', 'retrievedAt', 'openItems', 'payments'
   ],
   exposure_by: ['label', 'currency', 'exposure', 'creditLimit', 'customers', 'utilisation'],
+  get_monitoring_analysis: ['runId', 'status', 'summary', 'findings'],
   list_limit_requests: [
     'ID', 'customer_ID', 'currentLimit', 'requestedLimit', 'reason', 'requestedBy',
     'status', 'approverLevel', 'createdAt', 'decidedBy', 'customerName'
   ],
   get_portfolio_summary: [
-    'source', 'retrievedAt', 'portfolio', 'exposureByCountry', 'exposureByCompanyCode'
+    'source', 'retrievedAt', 'portfolio', 'exposureByCountry', 'exposureByCompanyCode',
+    'exposureByCustomer', 'customers'
   ],
   get_customer_approval_history: ['source', 'retrievedAt', 'customerId', 'requests'],
   get_monitoring_alerts: ['source', 'retrievedAt', 'status', 'alerts'],
@@ -365,6 +369,7 @@ module.exports = {
   PLAN_STATUSES,
   TASK_STATUSES,
   TASK_RESULT_STATUSES,
+  TOOL_RESULT_FIELDS,
   validatePlan,
   validateTaskResult
 };

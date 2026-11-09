@@ -3,8 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#102b46">
+  <meta name="theme-color" content="#0f2342">
   <title>Credit Guard | Bluspring Enterprises</title>
+  <meta name="description" content="Credit limit monitoring, SAP simulator ingestion, and AI-assisted exposure analysis for Bluspring Enterprises.">
+  <meta property="og:title" content="Credit Guard | Bluspring Enterprises">
+  <meta property="og:description" content="Credit limit monitoring, SAP simulator ingestion, and AI-assisted exposure analysis for Bluspring Enterprises.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/variables.css">
   <link rel="stylesheet" href="./css/base.css">
   <link rel="stylesheet" href="./css/layout.css">
@@ -12,165 +18,316 @@
   <script type="module" src="./js/main.js"></script>
 </head>
 <body>
-  <header class="app-header">
+  <header class="top-brand-bar">
     <a class="brand" href="./index.html" aria-label="Credit Guard home">
-      <span class="brand-mark">CG</span><span><strong>Credit Guard</strong><small>BLUSPRING ENTERPRISES</small></span>
+      <span class="brand-mark">CG</span>
+      <span class="brand-text">
+        <strong>Credit Guard</strong>
+        <small>BLUSPRING ENTERPRISES</small>
+      </span>
     </a>
-    <div class="header-meta">DEMO DATA · Simulated local INR · No live SAP data</div>
-  </header>
-  <main class="page-shell">
-    <section class="page-intro">
-      <div><p class="eyebrow">RISK &amp; RECEIVABLES · SIMULATED DEMO</p><h1 id="page-title">Credit overview</h1><p id="page-subtitle" class="muted">Review a controlled portfolio across five legal entities. Data freshness is not supplied by this local demo.</p></div>
-      <div class="header-meta">Data freshness <span id="last-updated">UNKNOWN</span></div>
-    </section>
-    <section id="kpis" class="kpi-grid" aria-label="Credit portfolio KPIs"></section>
-    <nav class="tabs" aria-label="Workspace sections">
-      <button class="tab active" type="button" data-tab="dashboard">Portfolio</button>
-      <button class="tab" type="button" data-tab="approvals">Approvals <span id="pending-count" class="tab-count">0</span></button>
-      <button class="tab" type="button" data-tab="analysis">Analysis</button>
-      <button class="tab" type="button" data-tab="simulator">SAP simulator</button>
-      <button class="tab" type="button" data-tab="chat">Credit assistant</button>
-    </nav>
-    <section id="dashboard-panel" class="tab-panel active">
-      <div class="content-grid">
-        <section class="card monitoring-card" aria-labelledby="monitoring-heading">
-          <div class="card-heading">
-            <div><p class="eyebrow">MANUAL CREDIT MONITORING</p><h2 id="monitoring-heading">Monitoring status</h2></div>
-            <div class="document-actions">
-              <button id="refresh-monitoring" class="button secondary" type="button">Refresh monitoring</button>
-              <button id="run-monitoring" class="button primary" type="button" hidden>Run monitoring</button>
-            </div>
-          </div>
-          <p class="muted">Deterministic demo rules: warning at 80%, breached at 100%, critical at 120%. Overdue status is based on invoice due dates. Monitoring runs only when an authorized operator starts it.</p>
-          <p id="monitoring-status" class="muted" role="status">No monitoring run is available yet.</p>
-          <p id="monitoring-error" class="form-message error" role="alert"></p>
-          <div id="monitoring-kpis" class="kpi-grid monitoring-kpis"></div>
-          <section class="monitoring-advisory">
-            <h3>Risk summary</h3>
-            <p id="monitoring-advisory" class="muted">Run monitoring to see a deterministic portfolio summary.</p>
-            <small id="monitoring-advisory-source" class="muted"></small>
-          </section>
-          <section class="monitoring-section">
-            <h3>Active alerts</h3>
-            <div id="monitoring-alerts" class="monitoring-list"></div>
-          </section>
-          <section class="monitoring-section">
-            <h3>Latest customer findings</h3>
-            <div id="monitoring-findings" class="table-wrap"></div>
-          </section>
-          <section class="monitoring-section">
-            <h3>Monitoring history</h3>
-            <div id="monitoring-history" class="table-wrap"></div>
-          </section>
-        </section>
-        <section class="card request-card">
-          <div class="card-heading"><div><p class="eyebrow">CREDIT CONTROL</p><h2>Request limit change</h2></div></div>
-          <p class="muted">In local demo mode, requests are routed to an approver and an approval updates only the local synthetic Credit Guard record. SAP credit limits are never updated.</p>
-          <form id="request-form" class="form-stack" hidden>
-            <label>Customer<select id="request-customer" required></select></label>
-            <label>New credit limit (INR)<input id="requested-limit" type="number" min="1" step="1" required placeholder="e.g. 1500000"></label>
-            <label>Business reason<textarea id="request-reason" rows="3" maxlength="500" required placeholder="Explain the requested change"></textarea></label>
-            <button class="button primary" type="submit">Submit for approval</button>
-            <p id="request-message" class="form-message" role="status"></p>
-          </form>
-        </section>
-      </div>
-    </section>
-    <section id="analysis-panel" class="tab-panel">
-      <div class="analysis-grid">
-        <section class="card exposure-card">
-          <div class="card-heading"><div><p class="eyebrow">PORTFOLIO MIX</p><h2>Exposure analysis</h2></div>
-            <div class="segmented analysis-exposure-groups" aria-label="Exposure grouping">
-              <button type="button" class="selected" data-group="country">Country</button>
-              <button type="button" data-group="companyCode">Company code</button>
-            </div>
-          </div>
-          <div id="exposure-list" class="exposure-list"></div>
-        </section>
-        <section class="card exposure-card">
-          <div class="card-heading"><div><p class="eyebrow">PORTFOLIO MIX</p><h2>By customer</h2></div></div>
-          <div id="customer-exposure-list" class="exposure-list"></div>
-        </section>
-      </div>
-      <section class="card table-card">
-        <div class="card-heading"><div><p class="eyebrow">CUSTOMER PORTFOLIO</p><h2>Customer exposure</h2></div><span id="customer-count" class="muted"></span></div>
-        <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Country / entity</th><th>Exposure</th><th>Credit limit</th><th>Utilisation</th><th>Overdue</th><th>Status</th></tr></thead><tbody id="customer-list"></tbody></table></div>
-        <div id="customer-detail" class="customer-detail" aria-live="polite"></div>
-      </section>
-    </section>
-    <section id="approvals-panel" class="tab-panel">
-      <section class="card">
-        <div class="card-heading"><div><p class="eyebrow">HUMAN-IN-THE-LOOP</p><h2>Limit approvals</h2></div></div>
-        <p class="muted">The authenticated server identity determines approver permissions. Decision reasons are recorded in the audit history. Local demo approvals update only synthetic Credit Guard records and do not update SAP.</p>
-        <div id="approvals-list" class="approval-list"></div>
-      </section>
-    </section>
-    <section id="simulator-panel" class="tab-panel">
-      <section class="card">
-        <div class="card-heading">
-          <div><p class="eyebrow">SYNTHETIC SOURCE SYSTEM</p><h2>SAP S/4HANA-style Mock Simulator</h2></div>
-          <div class="document-actions">
-            <button id="refresh-mock-sap" class="button secondary" type="button">Reload simulator data</button>
-            <button id="extract-mock-sap" class="button primary" type="button" hidden>Extract data</button>
-          </div>
-        </div>
-        <p class="muted">Mock SAP Simulator — deterministic synthetic records only. This is not a real SAP connection and does not read or update SAP.</p>
-        <p id="mock-sap-portfolio-source" class="muted"></p>
-        <p id="mock-sap-error" class="form-message error" role="alert"></p>
-        <dl class="mock-sap-source-meta">
-          <div><dt>Source</dt><dd id="mock-sap-source-name">Loading…</dd></div>
-          <div><dt>Source ID</dt><dd id="mock-sap-source-id">—</dd></div>
-          <div><dt>Status</dt><dd id="mock-sap-registration">—</dd></div>
-        </dl>
-        <progress id="mock-sap-progress" class="mock-sap-progress" aria-label="Mock SAP extraction in progress" hidden></progress>
-        <p id="mock-sap-progress-label" class="muted" role="status" hidden></p>
-      </section>
-      <section class="mock-sap-records-grid" id="mock-sap-records" aria-label="Synthetic Mock SAP source records"></section>
-      <section class="card table-card">
-        <div class="card-heading"><div><p class="eyebrow">BACKEND INGESTION</p><h2>Latest extraction</h2></div></div>
-        <div id="mock-sap-extraction-status"></div>
-      </section>
-      <section class="card table-card">
-        <div class="card-heading">
-          <div><p class="eyebrow">EXISTING DETERMINISTIC RULES</p><h2>Monitoring results</h2></div>
-          <button id="run-mock-sap-monitoring" class="button secondary" type="button" hidden>Run monitoring</button>
-        </div>
-        <p class="muted">Monitoring is an explicit action. Results and findings below are returned by the existing Credit Guard monitoring service.</p>
-        <p id="mock-sap-monitoring-status" class="muted" role="status">Extract source data before running monitoring.</p>
-        <div id="mock-sap-monitoring-results"></div>
-      </section>
-    </section>
-    <section id="chat-panel" class="tab-panel">
-      <section class="card chat-card">
-        <div class="card-heading"><div><p class="eyebrow">AI CREDIT CONTROL · DEMO RECORDS</p><h2>Credit assistant</h2></div><div class="document-actions"><span class="offline-label">Tool-assisted · human approval required</span><button id="analyze-portfolio" class="button secondary" type="button">Analyze latest monitoring run</button></div></div>
-        <form id="document-form" class="document-upload">
-          <div><p class="document-title">Analyze a document</p><p class="muted">Upload a PDF, DOCX, or UTF-8 TXT (max 10 MB). Text is extracted for analysis and is not saved.</p></div>
-          <label for="document-file">Choose document<input id="document-file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" required></label>
-          <div class="document-actions"><button class="button primary" type="submit">Read and analyze</button><button id="clear-document" class="button secondary" type="button" disabled>Remove document</button></div>
-          <p id="document-status" class="form-message" role="status"></p>
-          <p class="privacy-note">With an Anthropic API key configured, extracted text is sent to Anthropic for analysis. Without a key, analysis runs offline. Scanned PDFs require OCR first.</p>
-        </form>
-        <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
-        <p id="chat-status" class="muted" role="status"></p>
-        <section id="agent-activity" class="agent-activity" aria-live="polite" hidden></section>
-        <form id="chat-form" class="chat-form"><label class="sr-only" for="chat-input">Ask the assistant</label><input id="chat-input" required maxlength="1000" placeholder="Ask about exposure, a customer, or pending requests"><button class="button primary" type="submit">Send</button></form>
-        <p id="chat-error" class="form-message error" role="alert"></p>
-        <section class="agent-history">
-          <div class="card-heading"><h3>Agent execution history</h3><div class="document-actions">
-            <button id="refresh-agent-history" class="button secondary" type="button">Refresh</button>
-            <button id="clear-agent-history" class="button secondary" type="button">Clear my agent history</button>
-          </div></div>
-          <p id="agent-memory-status" class="muted" role="status"></p>
-          <ul id="agent-conversations-list" aria-label="My conversations"></ul>
-          <ul id="agent-history-list"></ul>
-        </section>
-      </section>
-    </section>
-    <div id="global-error" class="notice error" role="alert" hidden></div>
-    <div id="source-mode-notice" class="notice read-only" role="status" hidden>
-      <strong>SAP read-only mode:</strong> Customer and monitoring data can be read from SAP, but credit-limit requests and approvals are disabled. Credit Guard does not update SAP credit limits; any existing approval history is local demo history.
+    <div class="top-brand-meta">
+      <span>DEMO DATA · Simulated local INR · No live SAP data</span>
     </div>
-  </main>
-  <footer class="page-footer">Credit Guard demo · Bluspring Enterprises · INR</footer>
+  </header>
+
+  <div id="workspace-shell" class="workspace-shell">
+    <aside id="app-sidebar" class="app-sidebar" aria-label="Primary workspace navigation">
+      <div class="sidebar-header">
+        <span class="sidebar-section-label">WORKSPACE NAVIGATION</span>
+      </div>
+      <nav class="tabs sidebar-nav" aria-label="Workspace sections">
+        <button class="tab active" type="button" data-tab="chat">
+          <span class="nav-label">AI Credit Assistance</span>
+        </button>
+        <button class="tab" type="button" data-tab="dashboard">
+          <span class="nav-label">Portfolio &amp; Monitoring</span>
+        </button>
+        <button class="tab" type="button" data-tab="analysis">
+          <span class="nav-label">Exposure Analysis</span>
+        </button>
+        <button class="tab" type="button" data-tab="approvals">
+          <span class="nav-label">Limit Approvals</span>
+          <span id="pending-count" class="tab-count">0</span>
+        </button>
+        <button class="tab" type="button" data-tab="simulator">
+          <span class="nav-label">SAP BTP &amp; HANA CDS</span>
+        </button>
+      </nav>
+    </aside>
+
+    <div class="workspace-main">
+      <main class="page-shell">
+        <section class="page-intro">
+          <div>
+            <p id="page-eyebrow" class="eyebrow">RISK &amp; RECEIVABLES · SIMULATED DEMO</p>
+            <h1 id="page-title">Credit overview</h1>
+            <p id="page-subtitle" class="muted">Review a controlled portfolio across five legal entities and ask cross-module questions with AI Credit Assistance.</p>
+          </div>
+          <div class="freshness-meta">
+            <span>Data freshness <strong id="last-updated">UNKNOWN</strong></span>
+          </div>
+        </section>
+
+        <section id="chat-panel" class="tab-panel active">
+          <section id="kpis" class="kpi-grid" aria-label="Credit portfolio KPIs"></section>
+
+          <div class="chat-workspace-grid">
+            <section class="card chat-card" aria-labelledby="credit-assistant-heading">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">AI CREDIT CONTROL · DEMO RECORDS</p>
+                  <h2 id="credit-assistant-heading">Ask with AI Credit Assistance</h2>
+                </div>
+                <div class="document-actions">
+                  <span class="offline-label">Tool-assisted · human approval required</span>
+                  <button id="analyze-portfolio" class="button secondary" type="button">Analyze latest monitoring run</button>
+                </div>
+              </div>
+
+              <div class="quick-prompts-bar" id="ai-welcome-board" aria-label="Suggested AI Credit Assistance questions">
+                <button type="button" class="quick-prompt-btn" data-agent-prompt="List all customers above 80% credit utilisation and explain their exposure, credit limit, and risk flags.">
+                  Customers above 80% utilisation
+                </button>
+                <button type="button" class="quick-prompt-btn" data-agent-prompt="Summarize portfolio credit exposure by country, company code, and top customers.">
+                  Exposure by country &amp; company code
+                </button>
+                <button type="button" class="quick-prompt-btn" data-agent-prompt="List all customers with overdue invoices and high exposure, and recommend collections actions.">
+                  Overdue invoices &amp; collections risk
+                </button>
+                <button type="button" class="quick-prompt-btn" data-agent-prompt="Explain and recommend whether to increase the limit for Aarav Components (C001).">
+                  Evaluate Aarav Components (C001)
+                </button>
+                <button type="button" class="quick-prompt-btn" data-agent-prompt="Prepare a credit limit request for C001 to INR 1500000 because of expanded Q4 supply contract.">
+                  Draft limit request for C001
+                </button>
+              </div>
+
+              <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+              <p id="chat-status" class="muted" role="status"></p>
+              <section id="agent-activity" class="agent-activity" aria-live="polite" hidden></section>
+              <form id="chat-form" class="chat-form">
+                <label class="sr-only" for="chat-input">Ask with AI Credit Assistance</label>
+                <input id="chat-input" required maxlength="1000" placeholder="Ask about credit exposure, utilisation, overdue invoices, customer C001–C013, or limit change requests…">
+                <button class="button primary" type="submit">Ask AI</button>
+              </form>
+              <p id="chat-error" class="form-message error" role="alert"></p>
+            </section>
+
+            <div class="chat-side-stack">
+              <section class="card" aria-labelledby="connectors-quick-heading">
+                <div class="card-heading">
+                  <div>
+                    <p class="eyebrow">ENTERPRISE INTEGRATION</p>
+                    <h3 id="connectors-quick-heading">SAP &amp; ERP Connectors</h3>
+                  </div>
+                </div>
+                <p class="muted">Live FIN-FSCM-CR canonical pipeline connected to SAP S/4HANA OData, HANA Replicated Tables, and Structured File Connectors (CSV, TSV, JSON, XML).</p>
+                <div class="kpi-card" style="margin: 0.75rem 0; padding: 0.75rem;">
+                  <span class="kpi-label">Pipeline Architecture</span>
+                  <span class="kpi-value" style="font-size: 1.05rem; color: #1a73e8;">RAW → CANONICAL → CALCULATION</span>
+                  <span class="kpi-subtext">Deterministic FIN-FSCM-CR Exposure Engine</span>
+                </div>
+                <div class="document-actions">
+                  <button id="jump-connectors-btn" type="button" class="button secondary">Manage Connectors &amp; Schema</button>
+                </div>
+              </section>
+
+              <section class="card agent-history">
+                <div class="card-heading">
+                  <div>
+                    <p class="eyebrow">AUDIT &amp; MEMORY</p>
+                    <h3>Agent execution history</h3>
+                  </div>
+                  <div class="document-actions">
+                    <button id="refresh-agent-history" class="button secondary" type="button">Refresh</button>
+                    <button id="clear-agent-history" class="button secondary" type="button">Clear history</button>
+                  </div>
+                </div>
+                <p id="agent-memory-status" class="muted" role="status"></p>
+                <ul id="agent-conversations-list" aria-label="My conversations"></ul>
+                <ul id="agent-history-list"></ul>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section id="dashboard-panel" class="tab-panel">
+          <div class="content-grid">
+            <section class="card monitoring-card" aria-labelledby="monitoring-heading">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">MANUAL CREDIT MONITORING</p>
+                  <h2 id="monitoring-heading">Monitoring status</h2>
+                </div>
+                <div class="document-actions">
+                  <button id="refresh-monitoring" class="button secondary" type="button">Refresh monitoring</button>
+                  <button id="run-monitoring" class="button primary" type="button" hidden>Run monitoring</button>
+                </div>
+              </div>
+              <p class="muted">Deterministic demo rules: warning at 80%, breached at 100%, critical at 120%. Overdue status is based on invoice due dates. Monitoring runs only when an authorized operator starts it.</p>
+              <p id="monitoring-status" class="muted" role="status">No monitoring run is available yet.</p>
+              <p id="monitoring-error" class="form-message error" role="alert"></p>
+              <div id="monitoring-kpis" class="kpi-grid monitoring-kpis"></div>
+              <section class="monitoring-advisory">
+                <h3>Risk summary</h3>
+                <p id="monitoring-advisory" class="muted">Run monitoring to see a deterministic portfolio summary.</p>
+                <small id="monitoring-advisory-source" class="muted"></small>
+              </section>
+              <section class="monitoring-section">
+                <h3>Active alerts</h3>
+                <div id="monitoring-alerts" class="monitoring-list"></div>
+              </section>
+              <section class="monitoring-section">
+                <h3>Latest customer findings</h3>
+                <div id="monitoring-findings" class="table-wrap"></div>
+              </section>
+              <section class="monitoring-section">
+                <h3>Monitoring history</h3>
+                <div id="monitoring-history" class="table-wrap"></div>
+              </section>
+            </section>
+            <section class="card request-card">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">CREDIT CONTROL</p>
+                  <h2>Request limit change</h2>
+                </div>
+              </div>
+              <p class="muted">In local demo mode, requests are routed to an approver and an approval updates only the local synthetic Credit Guard record. SAP credit limits are never updated.</p>
+              <form id="request-form" class="form-stack" hidden>
+                <label>Customer<select id="request-customer" required></select></label>
+                <label>New credit limit (INR)<input id="requested-limit" type="number" min="1" step="1" required placeholder="e.g. 1500000"></label>
+                <label>Business reason<textarea id="request-reason" rows="3" maxlength="500" required placeholder="Explain the requested change"></textarea></label>
+                <button class="button primary" type="submit">Submit for approval</button>
+                <p id="request-message" class="form-message" role="status"></p>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section id="analysis-panel" class="tab-panel">
+          <div class="analysis-grid">
+            <section class="card exposure-card">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">PORTFOLIO MIX · COUNTRY &amp; COMPANY CODE</p>
+                  <h2>Exposure Analysis</h2>
+                </div>
+                <div class="segmented analysis-exposure-groups" aria-label="Exposure grouping">
+                  <button type="button" class="selected" data-group="country">Country</button>
+                  <button type="button" data-group="companyCode">Company code</button>
+                </div>
+              </div>
+              <div id="exposure-list" class="exposure-list"></div>
+            </section>
+            <section class="card exposure-card">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">PORTFOLIO MIX · CUSTOMER RANKING</p>
+                  <h2>By Customer</h2>
+                </div>
+              </div>
+              <div id="customer-exposure-list" class="exposure-list"></div>
+            </section>
+          </div>
+          <section class="card table-card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">ACCOUNTS RECEIVABLE PORTFOLIO</p>
+                <h2>Customer Credit Limit Utilisation &amp; Exposure</h2>
+              </div>
+              <span id="customer-count" class="muted"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Country / entity</th>
+                    <th>Exposure</th>
+                    <th>Credit limit</th>
+                    <th>Utilisation</th>
+                    <th>Overdue</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="customer-list"></tbody>
+              </table>
+            </div>
+            <div id="customer-detail" class="customer-detail" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <section id="approvals-panel" class="tab-panel">
+          <section class="card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">HUMAN-IN-THE-LOOP GOVERNANCE</p>
+                <h2>Credit Limit Change Approvals</h2>
+              </div>
+            </div>
+            <p class="muted">Authenticated role permissions enforce separation of duties between requester and approver (Credit Controller and Finance Head). Every approval or rejection is persisted in <code>credit.ApprovalHistory</code>.</p>
+            <div id="approvals-list" class="approval-list"></div>
+          </section>
+        </section>
+
+        <section id="simulator-panel" class="tab-panel">
+          <div id="connectors-workspace" style="margin-bottom: 2rem;"></div>
+          <section class="card sap-architecture-card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">SAP BTP · SAP HANA CLOUD HDI · ABAP CDS</p>
+                <h2>SAP S/4HANA FSCM &amp; BTP Data Integration</h2>
+              </div>
+              <div class="document-actions">
+                <button id="refresh-mock-sap" class="button secondary" type="button">Reload simulator data</button>
+                <button id="extract-mock-sap" class="button primary" type="button" hidden>Extract data</button>
+              </div>
+            </div>
+            <p class="muted">Inspect synthetic SAP S/4HANA FSCM source entities, extract canonical snapshots into the CAP / HANA database, and run deterministic credit monitoring.</p>
+            <p id="mock-sap-portfolio-source" class="muted"></p>
+            <p id="mock-sap-error" class="form-message error" role="alert"></p>
+            <dl class="mock-sap-source-meta">
+              <div><dt>Source</dt><dd id="mock-sap-source-name">Loading…</dd></div>
+              <div><dt>Source ID</dt><dd id="mock-sap-source-id">—</dd></div>
+              <div><dt>Status</dt><dd id="mock-sap-registration">—</dd></div>
+            </dl>
+            <progress id="mock-sap-progress" class="mock-sap-progress" aria-label="Mock SAP extraction in progress" hidden></progress>
+            <p id="mock-sap-progress-label" class="muted" role="status" hidden></p>
+          </section>
+          <section class="mock-sap-records-grid" id="mock-sap-records" aria-label="Synthetic Mock SAP source records"></section>
+          <section class="card table-card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">CANONICAL CAP / HANA INGESTION</p>
+                <h2>Latest Extraction &amp; Validation</h2>
+              </div>
+            </div>
+            <div id="mock-sap-extraction-status"></div>
+          </section>
+          <section class="card table-card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">DETERMINISTIC FSCM RULES ENGINE</p>
+                <h2>Monitoring Results</h2>
+              </div>
+              <button id="run-mock-sap-monitoring" class="button secondary" type="button" hidden>Run monitoring</button>
+            </div>
+            <p class="muted">Run deterministic credit monitoring over extracted SAP records to update portfolio alerts and findings.</p>
+            <p id="mock-sap-monitoring-status" class="muted" role="status">Extract source data before running monitoring.</p>
+            <div id="mock-sap-monitoring-results"></div>
+          </section>
+        </section>
+
+        <div id="global-error" class="notice error" role="alert" hidden></div>
+        <div id="source-mode-notice" class="notice read-only" role="status" hidden>
+          <strong>SAP read-only mode:</strong> Customer and monitoring data can be read from SAP, but credit-limit requests and approvals are disabled. Credit Guard does not update SAP credit limits; any existing approval history is local demo history.
+        </div>
+      </main>
+
+      <footer class="page-footer">Credit Guard · Bluspring Enterprises · INR</footer>
+    </div>
+  </div>
 </body>
 </html>

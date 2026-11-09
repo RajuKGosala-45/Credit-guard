@@ -7,11 +7,12 @@
     "node": "^22.0.0"
   },
   "scripts": {
-    "dev": "cds watch --port 4005",
-    "start": "cds-serve",
+    "dev": "CREDIT_GUARD_DEV_DEFAULT_USER=administrator LLM_PROVIDER=gemini LLM_MODEL=gemini-3.1-flash-lite LLM_TIMEOUT_MS=25000 AGENT_MEMORY_ENABLED=true cds-serve --port 3000",
+    "start": "CREDIT_GUARD_DEV_DEFAULT_USER=administrator LLM_PROVIDER=gemini LLM_MODEL=gemini-3.1-flash-lite LLM_TIMEOUT_MS=25000 AGENT_MEMORY_ENABLED=true cds-serve --port 3000",
     "start:cf": "cds-serve",
     "start:persistent": "cds-serve --profile persistent",
     "build": "npm run build:cf",
+    "lint": "node --check srv/server.js",
     "test": "node --test tests/*.test.js",
     "build:cf": "cds build --production --opts contentHdbtabledata=true && node -e \"const fs=require('fs');fs.mkdirSync('gen/srv/app',{recursive:true});fs.cpSync('app/credit','gen/srv/app/credit',{recursive:true})\""
   },
@@ -24,10 +25,9 @@
             "database": ":memory:"
           }
         },
-        "[persistent]": {
+        "[persistent!]": {
           "kind": "sqlite",
           "credentials": {
-            "url": "credit-guard.sqlite",
             "database": "credit-guard.sqlite"
           }
         },

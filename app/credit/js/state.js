@@ -1,5 +1,6 @@
 export const state = {
-  currentTab: 'dashboard',
+  currentTab: 'chat',
+  sidebarCollapsed: false,
   selectedCustomer: null,
   exposureGroup: 'country',
   session: null,
@@ -11,5 +12,6 @@ export const state = {
   agentExecution: null,
   documentContext: null,
   chatMessages: [],
-  conversationId: null
+  conversationId: null,
+  geminiStatus: null
 };

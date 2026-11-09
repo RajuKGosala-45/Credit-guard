@@ -11,6 +11,7 @@ const root = path.join(__dirname, '..');
 function readProfile(profile) {
   const script = "const cds=require('@sap/cds'); console.log(JSON.stringify({profiles:cds.env.profiles,db:cds.env.requires.db,auth:cds.env.requires.auth}))";
   const env = { ...process.env, CDS_ENV: profile };
+  if (profile === 'production') env.NODE_ENV = 'production';
   delete env.VCAP_SERVICES;
   delete env.VCAP_APPLICATION;
   const result = spawnSync(process.execPath, ['-e', script], { cwd: root, env, encoding: 'utf8' });

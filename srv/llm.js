@@ -1,6 +1,26 @@
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_TIMEOUT_MS = 120000;
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
+const UNSUPPORTED_GEMINI_SCHEMA_KEYS = new Set([
+  'additionalProperties',
+  'maxLength',
+  'exclusiveMinimum',
+  'minimum',
+  'maximum',
+  'minItems',
+  'maxItems'
+]);
+
+function sanitizeGeminiSchema(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  if (Array.isArray(schema)) return schema.map(sanitizeGeminiSchema);
+  const sanitized = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (UNSUPPORTED_GEMINI_SCHEMA_KEYS.has(key)) continue;
+    sanitized[key] = sanitizeGeminiSchema(value);
+  }
+  return sanitized;
+}
 
 function normalizeTimeoutMs(value) {
   if (value === undefined) return DEFAULT_TIMEOUT_MS;
@@ -132,7 +152,14 @@ class GeminiProvider {
       this.#client = client;
     } else {
       const { GoogleGenAI } = require('@google/genai');
-      this.#client = new GoogleGenAI({ apiKey });
+      this.#client = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build'
+          }
+        }
+      });
     }
   }
 
@@ -151,7 +178,7 @@ class GeminiProvider {
       const functionDeclarations = tools.map(tool => ({
         name: tool.name,
         description: tool.description,
-        parametersJsonSchema: tool.input_schema
+        parametersJsonSchema: sanitizeGeminiSchema(tool.input_schema)
       }));
       const functionCallingConfig = toolChoice?.type === 'tool'
         ? {
@@ -185,10 +212,10 @@ class GeminiProvider {
         : Array.isArray(candidateParts)
           ? candidateParts.map(part => part?.functionCall).filter(Boolean)
           : [];
-      const text = typeof response?.text === 'string'
-        ? response.text
-        : Array.isArray(candidateParts)
-          ? candidateParts.map(part => part?.text).filter(value => typeof value === 'string').join('\n')
+      const text = Array.isArray(candidateParts)
+        ? candidateParts.map(part => part?.text).filter(value => typeof value === 'string').join('\n')
+        : typeof response?.text === 'string'
+          ? response.text
           : '';
       const content = [];
       if (text) content.push({ type: 'text', text });

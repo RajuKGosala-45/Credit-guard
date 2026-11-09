@@ -31,6 +31,13 @@ export function renderCustomerDetail(customer, payments = [], approvalHistory = 
     <span class="chip ${statusClass(customer.status)}">${escapeHTML(status)}</span></div>
     <p class="muted">Risk ${escapeHTML(customer.riskClass)} · Last review ${escapeHTML(formatDate(customer.lastReviewDate))} · Flags: ${escapeHTML(flags)}</p>
     <p class="muted">Exposure ${escapeHTML(formatMoney(customer.exposure, customer.currency))} of ${escapeHTML(formatMoney(customer.creditLimit, customer.currency))} · ${escapeHTML(formatPercent(customer.utilisation))} utilised · ${escapeHTML(formatMoney(customer.overdueAmount, customer.currency))} overdue</p>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; margin: 0.75rem 0;">
+      <p style="margin: 0; font-size: 0.9rem;">
+        <strong>FIN-FSCM-CR Composite Risk:</strong> <span class="chip ${customer.utilisation > 1 ? 'breach' : customer.utilisation >= 0.8 ? 'warning' : 'healthy'}">${customer.compositeRiskScore || (customer.utilisation > 1 ? 88 : customer.utilisation >= 0.8 ? 65 : 28)}/100</span>
+        · <strong>SAP Segment:</strong> <code>MAIN</code>
+        · <strong>Exposure Category:</strong> Orders + Deliveries + Billing + FI-AR Open Items
+      </p>
+    </div>
     <h3>Open items (${items.length})</h3>${items.length ? `<ul class="detail-items">${items.map(item =>
       `<li>${escapeHTML(item.type)} · ${escapeHTML(formatMoney(Number(item.amount), item.currency || customer.currency))} · Due ${escapeHTML(formatDate(item.dueDate))} · ${escapeHTML(item.isOverdue ? 'Overdue (by due date)' : item.status)}${item.creditConsuming ? '' : ' · excluded from exposure'}</li>`
     ).join('')}</ul>` : '<p class="empty-state">No open items for this customer.</p>'}
