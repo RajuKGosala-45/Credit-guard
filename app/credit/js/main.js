@@ -260,25 +260,7 @@ async function loadMockSap() {
   }
 }
 
-document.querySelector('.simulator-subtabs')?.addEventListener('click', event => {
-  const btn = event.target.closest('[data-sim-subtab]');
-  if (!btn) return;
-  const subtab = btn.dataset.simSubtab;
-  document.querySelectorAll('.simulator-subtabs button').forEach(b => {
-    b.classList.toggle('selected', b === btn);
-  });
-  document.querySelectorAll('.sim-subtab-pane').forEach(pane => {
-    pane.style.display = pane.id === `sim-subtab-${subtab}` ? 'block' : 'none';
-  });
-  if (subtab === 'scheduler') {
-    const schedulerHost = document.querySelector('#scheduler-workspace');
-    if (schedulerHost && !schedulerHost.hasChildNodes()) {
-      renderSchedulerPanel(schedulerHost).catch(() => {});
-    } else {
-      loadSchedulerStatus();
-    }
-  }
-});
+
 
 document.querySelector('#ai-welcome-board')?.addEventListener('click', event => {
   const promptCard = event.target.closest('[data-agent-prompt]');
