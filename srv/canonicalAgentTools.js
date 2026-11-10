@@ -65,6 +65,47 @@ const CANONICAL_AGENT_TOOLS = Object.freeze([
       type: 'object',
       properties: {}
     }
+  },
+  {
+    name: 'get_autonomous_monitoring_status',
+    description: 'Retrieve the real-time operational status, cycle interval, last run timestamp, run duration, and telemetry of the autonomous 5-minute continuous monitoring scheduler.',
+    parameters: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'trigger_autonomous_monitoring_cycle',
+    description: 'Trigger an immediate autonomous data recalculation and monitoring execution cycle across all credit segments without waiting for the 5-minute timer.',
+    parameters: {
+      type: 'object',
+      properties: {
+        force: { type: 'boolean', description: 'Force execution even if scheduled slot was already run' }
+      }
+    }
+  },
+  {
+    name: 'evaluate_autonomous_credit_decision',
+    description: 'Evaluate a Business Partner against the deterministic Autonomous Credit Policy (FIN-FSCM-AUTONOMOUS-POLICY-V1), returning AUTO_APPROVE, AUTO_REJECT, or ESCALATE_TO_HUMAN with policy rule IDs and evidence.',
+    parameters: {
+      type: 'object',
+      properties: {
+        bpId: { type: 'string', description: 'Business Partner ID (e.g., C001..C013)' },
+        requestedLimit: { type: 'number', description: 'Optional proposed credit limit in segment currency' }
+      },
+      required: ['bpId']
+    }
+  },
+  {
+    name: 'execute_autonomous_policy_sweep',
+    description: 'Scan the portfolio or pending limit requests using the Autonomous Credit Decision Engine to identify auto-approvable low-risk adjustments, auto-rejections, and human escalations.',
+    parameters: {
+      type: 'object',
+      properties: {
+        processPending: { type: 'boolean', description: 'If true, process pending limit requests in the approval queue' },
+        autoCreateAndExecute: { type: 'boolean', description: 'If true, proactively create and execute governed workflows for flagged accounts' }
+      }
+    }
   }
 ]);
 
@@ -114,12 +155,61 @@ async function executeCanonicalAgentTool(db, toolName, args = {}) {
       };
     }
 
+    case 'get_autonomous_monitoring_status': {
+      const { getAutonomousSchedulerInstance } = require('./autonomousScheduler');
+      const instance = getAutonomousSchedulerInstance();
+      return instance ? instance.getStatus() : { status: 'STANDBY', message: 'Autonomous monitoring scheduler is not active.' };
+    }
+
+    case 'trigger_autonomous_monitoring_cycle': {
+      const { getAutonomousSchedulerInstance } = require('./autonomousScheduler');
+      const instance = getAutonomousSchedulerInstance();
+      if (!instance) {
+        return { status: 'SKIPPED', message: 'Autonomous monitoring scheduler is not active.' };
+      }
+      return instance.executeCycle({ force: args.force !== false, triggeredBy: 'AI_AGENT' });
+    }
+
+    case 'evaluate_autonomous_credit_decision': {
+      const { evaluateCustomerAutonomousDecision } = require('./autonomousDecisionEngine');
+      const bpId = String(args.bpId || args.customerId || args.customer_id || 'C001').trim();
+      return evaluateCustomerAutonomousDecision(db, bpId, {
+        requestedLimit: args.requestedLimit,
+        referenceDate: args.referenceDate || '2026-11-09'
+      });
+    }
+
+    case 'execute_autonomous_policy_sweep': {
+      const {
+        evaluatePortfolioAutonomousActions,
+        processPendingRequestsAutonomously
+      } = require('./autonomousDecisionEngine');
+      if (args.processPending) {
+        return processPendingRequestsAutonomously(db, {
+          referenceDate: args.referenceDate || '2026-11-09'
+        });
+      }
+      return evaluatePortfolioAutonomousActions(db, {
+        referenceDate: args.referenceDate || '2026-11-09',
+        autoCreateAndExecute: Boolean(args.autoCreateAndExecute)
+      });
+    }
+
     default:
       throw new TypeError(`Unsupported canonical agent tool: ${toolName}`);
   }
 }
 
-function buildDeterministicNarrative({ portfolio, dossier, preview, connectorStatus }) {
+function buildDeterministicNarrative({
+  portfolio,
+  dossier,
+  preview,
+  connectorStatus,
+  schedulerStatus,
+  cycleOutcome,
+  autonomousEvaluation,
+  autonomousSweep
+}) {
   const lines = [];
   if (dossier) {
     const snap = dossier.snapshot;
@@ -163,6 +253,56 @@ function buildDeterministicNarrative({ portfolio, dossier, preview, connectorSta
     );
   }
 
+  if (schedulerStatus && !dossier && !preview && !portfolio) {
+    lines.push(
+      `### Autonomous Credit Monitoring Scheduler Status`,
+      `- **Operational Status**: **${schedulerStatus.status}** | **Cycle Interval**: ${schedulerStatus.intervalMinutes} min (${schedulerStatus.intervalMs} ms)`,
+      `- **Run History**: Total: ${schedulerStatus.totalRuns} · Succeeded: ${schedulerStatus.successfulRuns} · Failed: ${schedulerStatus.failedRuns} · Skipped: ${schedulerStatus.skippedRuns}`,
+      `- **Timestamps**: Last run: ${schedulerStatus.lastRunAt || 'None yet'} | Next scheduled: ${schedulerStatus.nextRunAt || 'None scheduled'}`,
+      `- **Last Run Status**: **${schedulerStatus.lastRunStatus}** (Duration: ${schedulerStatus.lastRunDurationMs} ms)`
+    );
+  }
+
+  if (cycleOutcome && !dossier && !preview && !portfolio) {
+    lines.push(
+      `### Autonomous Monitoring Cycle Execution Result`,
+      `- **Outcome**: **${cycleOutcome.status}** | **Slot Key**: \`${cycleOutcome.slotKey}\``,
+      `- **Run ID**: \`${cycleOutcome.runId || 'N/A'}\` | **Duration**: ${cycleOutcome.durationMs} ms`,
+      `- **Snapshots Recalculated**: ${cycleOutcome.snapshotCount ?? 'N/A'}`
+    );
+  }
+
+  if (autonomousEvaluation) {
+    const ev = autonomousEvaluation.evidence;
+    lines.push(
+      `### Policy-Governed Autonomous Decision (${autonomousEvaluation.bp_name} — ${autonomousEvaluation.bp_id})`,
+      `- **Policy Outcome**: **${autonomousEvaluation.decision}** | **Policy Rule**: \`${autonomousEvaluation.matched_rule_id}\` (\`${autonomousEvaluation.policy_id}\`)`,
+      `- **Target Limit Evaluation**: ${Number(ev.current_limit).toLocaleString('en-IN')} → **${Number(ev.requested_limit).toLocaleString('en-IN')} ${autonomousEvaluation.currency}** (${ev.delta_amount >= 0 ? '+' : ''}${ev.delta_pct}%)`,
+      `- **Authority & Governance**: **${autonomousEvaluation.required_human_authority}**`,
+      `- **Policy Explanation**: ${autonomousEvaluation.explanation}`
+    );
+  }
+
+  if (autonomousSweep && !dossier) {
+    if (autonomousSweep.recommendations) {
+      lines.push(
+        `### Autonomous Portfolio Policy Scan (${autonomousSweep.policy_id})`,
+        `- **Scanned**: ${autonomousSweep.total_partners_scanned} Business Partners | **Flagged for Action**: ${autonomousSweep.flagged_partners_count}`,
+        `- **Autonomous Breakdown**: Auto-Approvable: **${autonomousSweep.auto_approvable_count}** · Auto-Rejectable: **${autonomousSweep.auto_rejectable_count}** · Human Escalation: **${autonomousSweep.human_escalation_count}**`
+      );
+      for (const rec of autonomousSweep.recommendations.slice(0, 6)) {
+        lines.push(
+          `  - **${rec.bp_name} (${rec.bp_id})**: Limit ${Number(rec.current_limit).toLocaleString('en-IN')} → ${Number(rec.proposed_limit).toLocaleString('en-IN')} INR | Decision: **${rec.decision}** (\`${rec.matched_rule_id}\`) — ${rec.explanation}`
+        );
+      }
+    } else {
+      lines.push(
+        `### Autonomous Pending Queue Sweep (${autonomousSweep.policy_id})`,
+        `- **Requests Evaluated**: ${autonomousSweep.evaluated_count} | **Auto-Approved**: **${autonomousSweep.auto_approved_count}** | **Auto-Rejected**: **${autonomousSweep.auto_rejected_count}** | **Escalated to Human**: **${autonomousSweep.escalated_to_human_count}**`
+      );
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -177,7 +317,7 @@ async function runCanonicalAgentQuery(db, {
   // Detect Business Partner ID in question (e.g., C001..C013) if not explicitly passed
   const bpMatch = bpId || promptText.match(/\b(C0(?:0[1-9]|1[0-3]))\b/i)?.[1]?.toUpperCase() || null;
   const limitMatch = requestedLimit
-    || (/\b(?:limit|increase|raise|propose|draft)\b/i.test(promptText)
+    || (/\b(?:limit|increase|raise|propose|draft|approve)\b/i.test(promptText)
       ? Number(promptText.match(/\b(\d{6,9})\b/)?.[1]) || null
       : null);
 
@@ -185,6 +325,10 @@ async function runCanonicalAgentQuery(db, {
   let dossier = null;
   let preview = null;
   let connectorStatus = null;
+  let schedulerStatus = null;
+  let cycleOutcome = null;
+  let autonomousEvaluation = null;
+  let autonomousSweep = null;
 
   if (bpMatch) {
     dossier = await executeCanonicalAgentTool(db, 'get_business_partner_dossier', { bpId: bpMatch });
@@ -199,6 +343,32 @@ async function runCanonicalAgentQuery(db, {
         args: { bpId: bpMatch, requestedLimit: limitMatch }
       });
     }
+    if (/\b(?:autonomous|auto-approve|policy|decision|should we approve|eligible)\b/i.test(promptText)) {
+      autonomousEvaluation = await executeCanonicalAgentTool(db, 'evaluate_autonomous_credit_decision', {
+        bpId: bpMatch,
+        requestedLimit: limitMatch || undefined
+      });
+      executedTools.push({
+        tool: 'evaluate_autonomous_credit_decision',
+        args: { bpId: bpMatch, ...(limitMatch ? { requestedLimit: limitMatch } : {}) }
+      });
+    }
+  } else if (/\b(?:policy|auto-approve|autonomous decision|which customers need a credit limit|recommend|actions should credit guard take)\b/i.test(promptText)) {
+    const processPending = /\b(?:pending|queue|requests)\b/i.test(promptText);
+    autonomousSweep = await executeCanonicalAgentTool(db, 'execute_autonomous_policy_sweep', {
+      processPending
+    });
+    executedTools.push({
+      tool: 'execute_autonomous_policy_sweep',
+      args: { processPending }
+    });
+  } else if (/\b(?:trigger|run now|force run|execute monitoring)\b/i.test(promptText)
+    && /\b(?:autonomous|scheduler|cycle|monitoring|cron)\b/i.test(promptText)) {
+    cycleOutcome = await executeCanonicalAgentTool(db, 'trigger_autonomous_monitoring_cycle', { force: true });
+    executedTools.push({ tool: 'trigger_autonomous_monitoring_cycle', args: { force: true } });
+  } else if (/\b(?:autonomous|scheduler|heartbeat|cron|cadence|recurring)\b/i.test(promptText)) {
+    schedulerStatus = await executeCanonicalAgentTool(db, 'get_autonomous_monitoring_status', {});
+    executedTools.push({ tool: 'get_autonomous_monitoring_status', args: {} });
   } else if (/\b(?:connector|source|mapping|hana|odata|schema)\b/i.test(promptText)) {
     connectorStatus = await executeCanonicalAgentTool(db, 'get_connector_and_mapping_status', {});
     executedTools.push({ tool: 'get_connector_and_mapping_status', args: {} });
@@ -211,7 +381,11 @@ async function runCanonicalAgentQuery(db, {
     portfolio,
     dossier,
     preview,
-    connectorStatus
+    connectorStatus,
+    schedulerStatus,
+    cycleOutcome,
+    autonomousEvaluation,
+    autonomousSweep
   });
 
   // Invoke server-side Gemini LLM strictly for explanation & recommendations over the deterministic tool results

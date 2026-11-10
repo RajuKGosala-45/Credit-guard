@@ -1,5 +1,5 @@
 export const state = {
-  currentTab: 'chat',
+  currentTab: 'home',
   sidebarCollapsed: false,
   selectedCustomer: null,
   exposureGroup: 'country',

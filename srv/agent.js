@@ -1388,6 +1388,13 @@ function parseLimitProposal(message) {
 }
 
 async function offlineReply(message, tools, documentContext) {
+  const lowerMsg = (message || '').toLocaleLowerCase();
+  if (/^\s*(hi|hello|hey|greetings|good\s+(morning|afternoon|evening)|how\s+are\s+you|what\s+(can|should)\s+i\s+explore|help|who\s+are\s+you)\b/i.test(lowerMsg)) {
+    return 'Hello! I am Credit Guard, your autonomous AI Credit Management assistant for Bluspring Enterprises. I can help you monitor credit limits, analyze customer portfolio exposure, review overdue invoices, inspect SAP BTP & HANA connectors, and evaluate policy-governed credit limit requests. How can I assist you with your credit portfolio today? (Offline demo mode)';
+  }
+  if (/\b(movie|film|actor|president|election|politics|weather|football|soccer|cricket|recipe|cook|baking|music|song|capital of|sport)\b/i.test(lowerMsg)) {
+    return 'I am Credit Guard, an autonomous enterprise AI credit management platform. I am specialized strictly in credit limit monitoring, portfolio exposure analysis, SAP integration, and risk management. I cannot assist with general topics outside credit management. How can I help you analyze your credit portfolio today? (Offline demo mode)';
+  }
   if (isWorkflowCreationRequest(message)) {
     if (!isSupportedRiskWorkflowRequest(message)) {
       return 'I can currently preview the fixed synthetic Mock SAP credit-risk review workflow only. Specify Mock SAP extraction, credit-risk monitoring, or an alert report; no workflow action was executed. (Offline demo mode)';
@@ -1587,7 +1594,7 @@ async function offlineReply(message, tools, documentContext) {
 
 class AgentController {
   constructor({ db, user, abapClient, customerDataSource, executionStore, sleepFn, provider,
-    providerName = process.env.LLM_PROVIDER || 'anthropic',
+    providerName = process.env.LLM_PROVIDER || 'gemini',
     maxSteps = MAX_STEPS, maxToolCalls = MAX_TOOL_CALLS, timeoutMs = EXECUTION_TIMEOUT_MS } = {}) {
     this.db = db;
     this.user = user;
@@ -1795,6 +1802,9 @@ class AgentController {
     const messages = [...history, { role: 'user', content: prompt || 'Resume the saved execution using its validated plan.' }];
     const system = [
       'You are the planning component of the Credit Guard AI assistant, connected to all Credit Guard tabs, KPIs, and calculations. Understand the user question and create the smallest useful plan using only supplied registered tools and declared inputs.',
+      'STRICT GUARDRAIL: You are Credit Guard, an autonomous enterprise AI credit management platform for Bluspring Enterprises. You are specialized strictly in credit limit monitoring, portfolio exposure analysis, SAP S/4HANA / SAP BTP data connectors, limit approvals, and financial risk workflows. If the user asks about out-of-scope topics (such as movies, politics, weather, sports, cooking, recipes, or general trivia), you must refuse politely and guide them back to credit management topics.',
+      'CONVERSATION INSTRUCTION: Respond warmly and naturally to greetings ("hello", "hi", "how are you", "what can I explore", "help") and explain how you can assist with credit exposure, monitoring, and limit workflows.',
+      'VISUAL FORMATTING RULE (CRITICAL): Whenever answering questions involving multiple customers, portfolios, credit limits, exposure breakdowns, overdue invoices, or lists of records, you MUST ALWAYS output the results in a well-structured Markdown table (`| Column | Column |`). Never present multi-record data solely as plain text paragraphs or unformatted bullet lists.',
       'Tool mapping across tabs: (1) Main Credit Overview KPIs & Exposure Analysis tab (Total exposure, Total credit limit, Overall utilisation, Overdue invoices, Country/Company Code/Customer exposure breakdowns, and full 13-customer portfolio summaries including overdueAmount and overdueInvoiceCount): use get_portfolio_summary or exposure_by. (2) Customer analysis, open items, and payments: use get_customer (with customer_id). (3) Utilization cohorts or high-exposure/overdue customer lists: use list_customers_over_threshold (min_utilisation is a decimal ratio between 0 and 10, e.g. 0.8 for 80% or 0 for all customers) or get_portfolio_summary. (4) Portfolio & Monitoring tab (Monitoring status, sub-KPIs, Risk summary, Latest customer findings, Active/Acknowledged/Resolved alerts): use get_monitoring_analysis and get_monitoring_alerts. (5) Limit Approvals tab (Pending/Approved/Rejected credit limit requests and decision history): use list_limit_requests and get_customer_approval_history. (6) SAP BTP & HANA CDS tab (Registered data sources, canonical HANA/CAP ingestion runs, validation issues, and Mock SAP S/4HANA records CUSTOMER/CREDIT_ACCOUNT/INVOICE/PAYMENT): use get_data_ingestion_status and get_mock_sap_records. Use actual tool results as the sole source of business facts.',
       'Plans are declarative only. Never provide permissions, executable code, SQL, shell commands, or tool definitions. Use only deterministic registered tools. Do not calculate, alter, round, or invent credit limits, exposure, utilization, overdue amounts, risk classifications, or monitoring thresholds; rely on backend-calculated values.',
       'When asked to create, design, or automate a workflow, use preview_credit_workflow only. It returns a fixed preview and does not execute any step. Never claim that extraction, monitoring, notification, scheduling, or financial actions were performed by a workflow.',
@@ -2131,11 +2141,92 @@ class AgentController {
       preparedActions,
       plan: publicPlan(plan),
       taskResults,
+      structuredContent: buildStructuredContent(executionOutputs),
       ...(executionOutputs.find(output => output.tool === 'preview_credit_workflow')
         ? { workflowPreview: executionOutputs.find(output => output.tool === 'preview_credit_workflow').result }
         : {})
     };
   }
+}
+
+function buildStructuredContent(executionOutputs = []) {
+  if (!Array.isArray(executionOutputs) || executionOutputs.length === 0) return null;
+  let customers = [];
+  let summary = null;
+  let singleCustomer = null;
+
+  for (const out of executionOutputs) {
+    if (!out || out.status !== 'SUCCESS' || !out.result) continue;
+    const res = out.result;
+    if (res.customers && Array.isArray(res.customers)) {
+      customers = res.customers;
+      summary = res;
+    } else if (Array.isArray(res)) {
+      customers = res;
+    } else if (res.ID && res.creditLimit !== undefined) {
+      singleCustomer = res;
+    }
+  }
+
+  if (customers.length > 0) {
+    const totalCustomers = customers.length;
+    const totalCreditLimit = customers.reduce((sum, c) => sum + Number(c.creditLimit || c.limit || 0), 0);
+    const totalExposure = customers.reduce((sum, c) => sum + Number(c.exposure || 0), 0);
+    const portfolioUtilisation = totalCreditLimit > 0 ? (totalExposure / totalCreditLimit) * 100 : 0;
+
+    const headers = ['Customer Name', 'ID', 'Country', 'Company Code', 'Credit Limit (INR)', 'Exposure (INR)', 'Utilisation'];
+    const rows = customers.map(c => [
+      c.name || c.customerName || '—',
+      c.ID || c.customer_ID || '—',
+      c.country || '—',
+      c.companyCode || c.company_code || '—',
+      Number(c.creditLimit || c.limit || 0).toLocaleString('en-IN'),
+      Number(c.exposure || 0).toLocaleString('en-IN'),
+      `${(Number(c.utilisation || 0) * 100).toFixed(1)}%`
+    ]);
+
+    const countryMap = new Map();
+    for (const c of customers) {
+      const country = c.country || 'Unknown';
+      countryMap.set(country, (countryMap.get(country) || 0) + Number(c.exposure || 0));
+    }
+    const chart = {
+      type: 'bar',
+      title: 'Credit Exposure by Country',
+      labels: Array.from(countryMap.keys()),
+      values: Array.from(countryMap.values())
+    };
+
+    return {
+      kpis: {
+        totalCustomers,
+        totalCreditLimit: `₹${totalCreditLimit.toLocaleString('en-IN')}`,
+        totalExposure: `₹${totalExposure.toLocaleString('en-IN')}`,
+        portfolioUtilisation: `${portfolioUtilisation.toFixed(1)}%`
+      },
+      table: { headers, rows },
+      chart
+    };
+  }
+
+  if (singleCustomer) {
+    return {
+      customerProfile: {
+        name: singleCustomer.name || singleCustomer.customerName || '—',
+        id: singleCustomer.ID || singleCustomer.customer_ID || '—',
+        country: singleCustomer.country || '—',
+        companyCode: singleCustomer.companyCode || '—',
+        creditLimit: `₹${Number(singleCustomer.creditLimit || 0).toLocaleString('en-IN')}`,
+        exposure: `₹${Number(singleCustomer.exposure || 0).toLocaleString('en-IN')}`,
+        availableCredit: `₹${Number(singleCustomer.availableCredit || 0).toLocaleString('en-IN')}`,
+        utilisation: `${(Number(singleCustomer.utilisation || 0) * 100).toFixed(1)}%`,
+        overdueAmount: `₹${Number(singleCustomer.overdueAmount || 0).toLocaleString('en-IN')}`,
+        riskClass: singleCustomer.riskClass || singleCustomer.CTLPC || 'Normal'
+      }
+    };
+  }
+
+  return null;
 }
 
 async function chat(message, db, documentContext, user, options = {}) {

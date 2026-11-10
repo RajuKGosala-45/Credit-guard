@@ -11,7 +11,7 @@ import {
 import { renderApprovals, handleApprovalClick } from './views/approvals.js';
 import { renderChat, handleChatSubmit, explainCustomer } from './views/chat.js';
 import { renderMockSap, renderMockSapMonitoring } from './views/mockSap.js';
-import { renderDataSourcesPanel } from './views/connectorsView.js';
+import { renderDataSourcesPanel, renderSchedulerPanel, loadSchedulerStatus } from './views/connectorsView.js';
 
 const errorHost = document.querySelector('#global-error');
 const pageCopy = Object.freeze({
@@ -48,18 +48,88 @@ function showError(message) {
   errorHost.textContent = `${message} If the issue continues, restart the server and reload.`;
 }
 
+const tabSections = {
+  chat: [
+    { id: 'sec-chat-control', label: 'AI Credit Control' },
+    { id: 'sec-audit-memory', label: 'Audit & Memory' },
+    { id: 'sec-enterprise-integration', label: 'Enterprise Integration' }
+  ],
+  dashboard: [
+    { id: 'sec-monitoring', label: 'Manual Credit Monitoring' },
+    { id: 'sec-limit-request', label: 'Request Limit Change' }
+  ],
+  analysis: [
+    { id: 'sec-exposure-analysis', label: 'Exposure Analysis' },
+    { id: 'sec-ar-portfolio', label: 'Accounts Receivable Portfolio' }
+  ],
+  approvals: [
+    { id: 'sec-autonomous-engine', label: 'Autonomous Policy Engine' },
+    { id: 'sec-human-approvals', label: 'Limit Change Approvals' }
+  ],
+  simulator: [
+    { id: 'sec-connectors', label: 'Connectors & Schema Discovery' },
+    { id: 'sec-scheduler', label: 'Autonomous Scheduler Daemon' },
+    { id: 'sec-sap-integration', label: 'SAP S/4HANA & FSCM Integration' }
+  ],
+  home: []
+};
+
+function renderSectionShortcuts(tab) {
+  const bar = document.querySelector('#section-shortcuts-bar');
+  if (!bar) return;
+  const sections = tabSections[tab] || [];
+  if (sections.length === 0 || tab === 'home') {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  bar.innerHTML = sections.map((sec, idx) => `
+    <button type="button" class="shortcut-tab-btn ${idx === 0 ? 'active' : ''}" data-target="${sec.id}" style="background: transparent; border: none; padding: 0.4rem 0.8rem; font-size: 0.9rem; font-weight: 600; color: #475569; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap;">
+      ${sec.label}
+    </button>
+  `).join('');
+}
+
+document.querySelector('#section-shortcuts-bar')?.addEventListener('click', e => {
+  const btn = e.target.closest('[data-target]');
+  if (!btn) return;
+  const targetId = btn.dataset.target;
+  const el = document.getElementById(targetId);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelectorAll('.shortcut-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+});
+
 function switchTab(tabName) {
   if (!tabName) return;
   state.currentTab = tabName;
-  updatePageHeading(state.currentTab);
-  document.querySelectorAll('.tabs [data-tab]').forEach(tab => {
+  const isHome = tabName === 'home';
+
+  const homeContainer = document.querySelector('#home-view-container');
+  const appContainer = document.querySelector('#app-workspace-container');
+
+  if (homeContainer) homeContainer.style.display = isHome ? 'block' : 'none';
+  if (appContainer) appContainer.style.display = isHome ? 'none' : 'grid';
+
+  if (!isHome) {
+    updatePageHeading(state.currentTab);
+    renderSectionShortcuts(state.currentTab);
+  } else {
+    renderSectionShortcuts('home');
+  }
+
+  document.querySelectorAll('[data-tab]').forEach(tab => {
     const isActive = tab.dataset.tab === state.currentTab;
     tab.classList.toggle('active', isActive);
     tab.setAttribute('aria-current', isActive ? 'page' : 'false');
   });
+
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === `${state.currentTab}-panel`);
   });
+
   if (state.currentTab === 'dashboard') {
     Promise.all([loadMonitoring(), loadPortfolio()]).catch(error => showError(error.message));
   }
@@ -94,11 +164,24 @@ function refreshPortfolio() {
   renderExposure(state.dashboard, 'customer', '#customer-exposure-list');
   renderCustomers(state.customers);
   renderRequestCustomers(state.customers);
-  document.querySelector('#last-updated').textContent = 'UNKNOWN';
+  const lastUpdatedEl = document.querySelector('#last-updated');
+  if (lastUpdatedEl) {
+    const runTime = state.mockSap?.latestRun?.completedAt || state.mockSap?.latestRun?.startedAt;
+    if (runTime) {
+      const d = new Date(runTime);
+      lastUpdatedEl.textContent = Number.isNaN(d.getTime()) ? runTime : d.toLocaleTimeString();
+    } else {
+      lastUpdatedEl.textContent = 'UNKNOWN';
+    }
+  }
 }
 
 async function loadPortfolio() {
-  [state.dashboard, state.customers] = await Promise.all([api.getDashboard(), api.getCustomers()]);
+  [state.dashboard, state.customers, state.mockSap] = await Promise.all([
+    api.getDashboard(),
+    api.getCustomers(),
+    api.getMockSap().catch(() => null)
+  ]);
   refreshPortfolio();
 }
 
@@ -163,6 +246,10 @@ async function loadMockSap() {
   if (connectorsHost && !connectorsHost.hasChildNodes()) {
     renderDataSourcesPanel(connectorsHost).catch(() => {});
   }
+  const schedulerHost = document.querySelector('#scheduler-workspace');
+  if (schedulerHost && !schedulerHost.hasChildNodes()) {
+    renderSchedulerPanel(schedulerHost).catch(() => {});
+  }
   state.mockSap = await api.getMockSap();
   renderMockSap(state.mockSap, state.session?.permissions);
   if (!state.mockSapMonitoring) {
@@ -172,6 +259,26 @@ async function loadMockSap() {
         : 'Extract source data before running monitoring.';
   }
 }
+
+document.querySelector('.simulator-subtabs')?.addEventListener('click', event => {
+  const btn = event.target.closest('[data-sim-subtab]');
+  if (!btn) return;
+  const subtab = btn.dataset.simSubtab;
+  document.querySelectorAll('.simulator-subtabs button').forEach(b => {
+    b.classList.toggle('selected', b === btn);
+  });
+  document.querySelectorAll('.sim-subtab-pane').forEach(pane => {
+    pane.style.display = pane.id === `sim-subtab-${subtab}` ? 'block' : 'none';
+  });
+  if (subtab === 'scheduler') {
+    const schedulerHost = document.querySelector('#scheduler-workspace');
+    if (schedulerHost && !schedulerHost.hasChildNodes()) {
+      renderSchedulerPanel(schedulerHost).catch(() => {});
+    } else {
+      loadSchedulerStatus();
+    }
+  }
+});
 
 document.querySelector('#ai-welcome-board')?.addEventListener('click', event => {
   const promptCard = event.target.closest('[data-agent-prompt]');
@@ -313,9 +420,14 @@ document.querySelector('#monitoring-history').addEventListener('click', async ev
   }
 });
 
-document.querySelector('.tabs').addEventListener('click', event => {
+document.querySelector('#home-open-ai-btn')?.addEventListener('click', () => {
+  switchTab('chat');
+});
+
+document.addEventListener('click', event => {
   const button = event.target.closest('[data-tab]');
   if (!button) return;
+  event.preventDefault();
   switchTab(button.dataset.tab);
 });
 
@@ -355,7 +467,7 @@ document.querySelector('#approvals-list').addEventListener('click', async event 
   try {
     const syncBtn = event.target.closest('.sync-sap-btn');
     if (syncBtn) {
-      const requestId = syncBtn.dataset.requestId;
+      const requestId = syncBtn.dataset.syncRequestId || syncBtn.dataset.requestId;
       syncBtn.disabled = true;
       syncBtn.textContent = 'Syncing to SAP…';
       try {
@@ -365,7 +477,7 @@ document.querySelector('#approvals-list').addEventListener('click', async event 
         showError(`SAP Sync failed: ${err.message}`);
       } finally {
         syncBtn.disabled = false;
-        syncBtn.textContent = 'Sync to SAP S/4HANA';
+        syncBtn.textContent = '⚡ Sync to SAP S/4HANA (UKMBP_CMS_SGM)';
       }
       return;
     }
@@ -375,6 +487,94 @@ document.querySelector('#approvals-list').addEventListener('click', async event 
       await Promise.all([loadPortfolio(), loadApprovals()]);
     }
   } catch (error) { showError(error.message); }
+});
+
+document.querySelector('#scan-autonomous-portfolio-btn')?.addEventListener('click', async event => {
+  const btn = event.currentTarget;
+  const resultsEl = document.querySelector('#autonomous-decision-results');
+  const msgEl = document.querySelector('#autonomous-decision-message');
+  btn.disabled = true;
+  if (msgEl) {
+    msgEl.textContent = 'Scanning all Business Partners against FIN-FSCM-AUTONOMOUS-POLICY-V1…';
+    msgEl.className = 'form-message';
+  }
+  try {
+    const scan = await api.scanV2PortfolioAutonomousActions({ autoCreateAndExecute: false });
+    if (resultsEl) {
+      resultsEl.innerHTML = `
+        <div class="kpi-grid" style="margin-bottom: 1rem;">
+          <div class="kpi-card"><span class="kpi-label">BPs Scanned</span><span class="kpi-value">${scan.total_partners_scanned}</span><span class="kpi-subtext">${scan.flagged_partners_count} Flagged</span></div>
+          <div class="kpi-card"><span class="kpi-label">Auto-Approvable</span><span class="kpi-value" style="color: #0b8043;">${scan.auto_approvable_count}</span><span class="kpi-subtext">Low-Risk Within Policy</span></div>
+          <div class="kpi-card"><span class="kpi-label">Auto-Rejectable</span><span class="kpi-value" style="color: #c5221f;">${scan.auto_rejectable_count}</span><span class="kpi-subtext">Severe Risk Guardrail</span></div>
+          <div class="kpi-card"><span class="kpi-label">Human Escalation</span><span class="kpi-value" style="color: #b06000;">${scan.human_escalation_count}</span><span class="kpi-subtext">Controller / Finance Head</span></div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Business Partner</th>
+                <th>Current → Proposed Limit</th>
+                <th>Utilisation</th>
+                <th>Autonomous Decision</th>
+                <th>Policy Rule</th>
+                <th>Governance Authority</th>
+                <th>Explanation</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(scan.recommendations || []).map(r => `
+                <tr>
+                  <td><strong>${r.bp_name}</strong> (<code>${r.bp_id}</code>)</td>
+                  <td>₹${Number(r.current_limit).toLocaleString('en-IN')} → <strong>₹${Number(r.proposed_limit).toLocaleString('en-IN')}</strong></td>
+                  <td>${r.current_utilization_pct}% (${r.threshold_status})</td>
+                  <td><span class="chip ${r.decision === 'AUTO_APPROVE' ? 'healthy' : r.decision === 'AUTO_REJECT' ? 'breach' : 'warning'}">${r.decision}</span></td>
+                  <td><code>${r.matched_rule_id}</code></td>
+                  <td>${r.required_human_authority}</td>
+                  <td><small class="muted">${r.explanation}</small></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+    if (msgEl) {
+      msgEl.textContent = `Portfolio scan completed (${scan.policy_id}): ${scan.auto_approvable_count} auto-approvable, ${scan.auto_rejectable_count} auto-rejectable, ${scan.human_escalation_count} escalated to human authority.`;
+      msgEl.className = 'form-message success';
+    }
+  } catch (err) {
+    if (msgEl) {
+      msgEl.textContent = `Portfolio scan failed: ${err.message}`;
+      msgEl.className = 'form-message error';
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.querySelector('#run-autonomous-pending-btn')?.addEventListener('click', async event => {
+  const btn = event.currentTarget;
+  const msgEl = document.querySelector('#autonomous-decision-message');
+  btn.disabled = true;
+  if (msgEl) {
+    msgEl.textContent = 'Executing autonomous policy sweep across pending and draft limit requests…';
+    msgEl.className = 'form-message';
+  }
+  try {
+    const res = await api.processV2PendingAutonomousRequests({ autoSyncToSap: true });
+    if (msgEl) {
+      msgEl.textContent = `Autonomous Sweep Complete (${res.policy_id}): Evaluated ${res.evaluated_count} requests · Auto-Approved & Synced: ${res.auto_approved_count} · Auto-Rejected: ${res.auto_rejected_count} · Escalated to Human: ${res.escalated_to_human_count}.`;
+      msgEl.className = 'form-message success';
+    }
+    await Promise.all([loadPortfolio(), loadApprovals()]);
+  } catch (err) {
+    if (msgEl) {
+      msgEl.textContent = `Autonomous sweep failed: ${err.message}`;
+      msgEl.className = 'form-message error';
+    }
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 document.querySelector('#chat-form').addEventListener('submit', event =>
@@ -529,6 +729,7 @@ document.querySelector('#jump-connectors-btn')?.addEventListener('click', () => 
 });
 
 updatePageHeading(state.currentTab);
+renderSectionShortcuts(state.currentTab);
 renderChat(state.chatMessages, null, state.session?.permissions);
 loadSession()
   .then(() => Promise.all([loadPortfolio(), loadMonitoring(), loadAgentHistory()]))

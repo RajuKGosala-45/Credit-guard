@@ -8,13 +8,17 @@ const {
   runCanonicalAgentQuery
 } = require('../srv/canonicalAgentTools');
 
-test('CANONICAL_AGENT_TOOLS defines all 4 deterministic FIN-FSCM-CR tools', () => {
+test('CANONICAL_AGENT_TOOLS defines all 8 deterministic FIN-FSCM-CR tools', () => {
   const names = CANONICAL_AGENT_TOOLS.map(t => t.name);
   assert.deepEqual(names, [
     'get_canonical_portfolio_exposure',
     'get_business_partner_dossier',
     'preview_canonical_limit_change',
-    'get_connector_and_mapping_status'
+    'get_connector_and_mapping_status',
+    'get_autonomous_monitoring_status',
+    'trigger_autonomous_monitoring_cycle',
+    'evaluate_autonomous_credit_decision',
+    'execute_autonomous_policy_sweep'
   ]);
 });
 
@@ -59,4 +63,12 @@ test('executeCanonicalAgentTool and runCanonicalAgentQuery return exact determin
   assert.equal(queryRes.executedTools.length, 2);
   assert.ok(queryRes.deterministicBriefing.includes('Aarav Components'));
   assert.ok(queryRes.deterministicBriefing.includes('80%'));
+
+  // 6. Autonomous monitoring status query
+  const schedRes = await runCanonicalAgentQuery(db, {
+    question: 'What is the autonomous monitoring scheduler status?'
+  });
+  assert.equal(schedRes.executedTools.length, 1);
+  assert.equal(schedRes.executedTools[0].tool, 'get_autonomous_monitoring_status');
+  assert.ok(schedRes.deterministicBriefing.includes('Autonomous Credit Monitoring Scheduler Status'));
 });

@@ -68,7 +68,7 @@
   flex-direction: column;
   padding: var(--space-5) var(--space-4);
   background: var(--color-sidebar-bg);
-  border-right: 1px solid var(--color-border);
+  border-right: 2px solid #1a365d !important;
 }
 
 .sidebar-header {
@@ -281,4 +281,59 @@
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+/* Sidebar Tabs Styling: Default Dark Blue Border Separated as Buttons */
+.sidebar-nav.tabs .tab {
+  border: 1px solid #1a365d !important;
+  background: #ffffff !important;
+  color: #1a365d !important;
+  transition: all 0.2s ease;
+}
+
+.sidebar-nav.tabs .tab:hover {
+  background: #f8fafc !important;
+}
+
+/* Active Neon Glow & Colored Borders per Tab with Dark Navy Background */
+.sidebar-nav.tabs .tab[data-tab="home"].active {
+  border: 2px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.4) !important;
+  background: #0f2342 !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav.tabs .tab[data-tab="chat"].active {
+  border: 2px solid rgba(52, 152, 219, 0.9) !important;
+  box-shadow: 0 0 16px rgba(52, 152, 219, 0.5) !important;
+  background: #0f2342 !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav.tabs .tab[data-tab="dashboard"].active {
+  border: 2px solid rgba(46, 204, 113, 0.9) !important;
+  box-shadow: 0 0 16px rgba(46, 204, 113, 0.5) !important;
+  background: #0f2342 !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav.tabs .tab[data-tab="analysis"].active {
+  border: 2px solid rgba(243, 156, 18, 0.9) !important;
+  box-shadow: 0 0 16px rgba(243, 156, 18, 0.5) !important;
+  background: #0f2342 !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav.tabs .tab[data-tab="approvals"].active {
+  border: 2px solid rgba(241, 196, 15, 0.9) !important;
+  box-shadow: 0 0 16px rgba(241, 196, 15, 0.5) !important;
+  background: #0f2342 !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav.tabs .tab[data-tab="simulator"].active {
+  border: 2px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.4) !important;
+  background: #0f2342 !important;
+  color: #ffffff !important;
 }

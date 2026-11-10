@@ -3,7 +3,9 @@ import {
   testV2Connector,
   discoverV2Schema,
   confirmV2Mappings,
-  syncV2Connector
+  syncV2Connector,
+  getV2SchedulerStatus,
+  triggerV2SchedulerCycle
 } from '../api.js';
 
 let activeDiscoveredMappings = [];
@@ -12,8 +14,9 @@ let activeDiscoveredSourceId = 'FILE-CSV-JSON-UPLOAD';
 export async function renderDataSourcesPanel(container) {
   if (!container) return;
   container.innerHTML = `
-    <div class="content-grid">
-      <section class="card">
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <!-- ROW 1: FULL-WIDTH ENTERPRISE CONNECTORS SECTION -->
+      <section class="card" style="width: 100%;">
         <div class="card-heading">
           <div>
             <p class="eyebrow">ENTERPRISE CONNECTORS &amp; SAP S/4HANA</p>
@@ -45,61 +48,113 @@ export async function renderDataSourcesPanel(container) {
         </div>
       </section>
 
-      <section class="card">
-        <div class="card-heading">
-          <div>
-            <p class="eyebrow">STRUCTURED ERP FILE CONNECTOR</p>
-            <h2>Upload &amp; Auto-Discover Schema</h2>
-          </div>
-        </div>
-        <p class="muted">
-          Upload enterprise tabular exports (CSV, TSV, JSON, OData JSON, or XML). The schema discovery engine auto-detects column headers, infers data types, and proposes confidence-scored mappings into SAP FIN-FSCM-CR canonical entities.
-        </p>
-        <div class="file-upload-box">
-          <label class="button secondary" style="cursor: pointer; display: inline-block;">
-            Choose File (CSV, JSON, XML)
-            <input id="structured-file-input" type="file" accept=".csv,.tsv,.json,.xml,text/csv,application/json,application/xml" style="display: none;">
-          </label>
-          <span id="selected-file-label" class="muted" style="margin-left: 1rem;">No file chosen</span>
-          <button id="discover-schema-btn" class="button primary" type="button" disabled style="margin-left: 1rem;">Discover Schema &amp; Propose Mappings</button>
-        </div>
-
-        <div id="schema-discovery-results" style="margin-top: 1.5rem; display: none;">
+      <!-- ROW 2: TWO SIDE-BY-SIDE SECTIONS -->
+      <div class="connectors-row-2" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; align-items: start;">
+        <!-- LEFT CARD: STRUCTURED ERP FILE CONNECTOR -->
+        <section class="card" style="height: 100%;">
           <div class="card-heading">
             <div>
-              <p class="eyebrow">SCHEMA MAPPING PROPOSALS</p>
-              <h3>Target Entity: <span id="discovered-primary-entity" class="pill warning"></span></h3>
+              <p class="eyebrow">STRUCTURED ERP FILE CONNECTOR</p>
+              <h2>Upload &amp; Auto-Discover Schema</h2>
+            </div>
+          </div>
+          <p class="muted">
+            Upload enterprise tabular exports (CSV, TSV, JSON, OData JSON, or XML). The schema discovery engine auto-detects column headers, infers data types, and proposes confidence-scored mappings into SAP FIN-FSCM-CR canonical entities.
+          </p>
+          <div class="file-upload-box" style="margin-top: 1rem;">
+            <label class="button secondary" style="cursor: pointer; display: inline-block;">
+              Choose File (CSV, JSON, XML)
+              <input id="structured-file-input" type="file" accept=".csv,.tsv,.json,.xml,text/csv,application/json,application/xml" style="display: none;">
+            </label>
+            <span id="selected-file-label" class="muted" style="margin-left: 1rem;">No file chosen</span>
+            <button id="discover-schema-btn" class="button primary" type="button" disabled style="margin-top: 0.75rem; display: block;">Discover Schema &amp; Propose Mappings</button>
+          </div>
+
+          <div id="schema-discovery-results" style="margin-top: 1.5rem; display: none;">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">SCHEMA MAPPING PROPOSALS</p>
+                <h3>Target Entity: <span id="discovered-primary-entity" class="pill warning"></span></h3>
+              </div>
+              <div class="document-actions">
+                <button id="confirm-sync-btn" class="button primary" type="button">Confirm Mappings &amp; Ingest to Canonical</button>
+              </div>
+            </div>
+            <p id="discovery-meta-text" class="muted"></p>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Source Column</th>
+                    <th>Sample Values</th>
+                    <th>Canonical Entity</th>
+                    <th>Canonical Field</th>
+                    <th>Transform Rule</th>
+                    <th>Confidence</th>
+                    <th>SAP Reference</th>
+                    <th>Verified Note</th>
+                  </tr>
+                </thead>
+                <tbody id="proposed-mappings-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <p id="connector-sync-message" class="form-message" role="status" style="margin-top: 1rem;"></p>
+        </section>
+
+        <!-- RIGHT CARD: AUTONOMOUS DAEMON -->
+        <section class="card" style="height: 100%;">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">AUTONOMOUS DAEMON · 5-MINUTE HEARTBEAT</p>
+              <h2>Autonomous Credit Monitoring Scheduler</h2>
             </div>
             <div class="document-actions">
-              <button id="confirm-sync-btn" class="button primary" type="button">Confirm Mappings &amp; Ingest to Canonical</button>
+              <button id="refresh-scheduler-btn" class="button secondary" type="button">Refresh Status</button>
+              <button id="trigger-scheduler-btn" class="button primary" type="button">Run Cycle Now</button>
             </div>
           </div>
-          <p id="discovery-meta-text" class="muted"></p>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Source Column</th>
-                  <th>Sample Values</th>
-                  <th>Canonical Entity</th>
-                  <th>Canonical Field</th>
-                  <th>Transform Rule</th>
-                  <th>Confidence</th>
-                  <th>SAP Reference</th>
-                  <th>Verified Note</th>
-                </tr>
-              </thead>
-              <tbody id="proposed-mappings-body"></tbody>
-            </table>
+          <p class="muted">
+            Continuously executes delta data extraction, recalculates deterministic FIN-FSCM-CR exposure snapshots across all Business Partners, and dispatches monitoring runs with database mutex slot locking to prevent duplicate jobs.
+          </p>
+          <div id="scheduler-status-grid" class="kpi-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem;">
+            <div class="kpi-card"><span class="kpi-label">Daemon Status</span><span class="kpi-value">Loading…</span></div>
           </div>
-        </div>
-        <p id="connector-sync-message" class="form-message" role="status" style="margin-top: 1rem;"></p>
-      </section>
+          <p id="scheduler-action-message" class="form-message" role="status" style="margin-top: 0.75rem;"></p>
+        </section>
+      </div>
     </div>
   `;
 
   attachConnectorEvents(container);
   await loadConnectorsList(container);
+}
+
+export async function renderSchedulerPanel(container) {
+  if (!container) return;
+  container.innerHTML = `
+    <section class="card">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">AUTONOMOUS DAEMON · 5-MINUTE HEARTBEAT</p>
+          <h2>Autonomous Credit Monitoring Scheduler</h2>
+        </div>
+        <div class="document-actions">
+          <button id="refresh-scheduler-btn" class="button secondary" type="button">Refresh Status</button>
+          <button id="trigger-scheduler-btn" class="button primary" type="button">Run Cycle Now</button>
+        </div>
+      </div>
+      <p class="muted">
+        Continuously executes delta data extraction, recalculates deterministic FIN-FSCM-CR exposure snapshots across all Business Partners, and dispatches monitoring runs with database mutex slot locking to prevent duplicate jobs.
+      </p>
+      <div id="scheduler-status-grid" class="kpi-grid">
+        <div class="kpi-card"><span class="kpi-label">Daemon Status</span><span class="kpi-value">Loading…</span></div>
+      </div>
+      <p id="scheduler-action-message" class="form-message" role="status" style="margin-top: 0.75rem;"></p>
+    </section>
+  `;
+  attachSchedulerEvents(container);
+  await loadSchedulerStatus(container);
 }
 
 async function loadConnectorsList(container) {
@@ -150,8 +205,44 @@ async function loadConnectorsList(container) {
   }
 }
 
+export async function loadSchedulerStatus(container = document) {
+  const grid = container.querySelector('#scheduler-status-grid');
+  if (!grid) return;
+  try {
+    const sched = await getV2SchedulerStatus();
+    const isRunning = sched.status === 'RUNNING';
+    grid.innerHTML = `
+      <div class="kpi-card">
+        <span class="kpi-label">Daemon Status</span>
+        <span class="kpi-value"><span class="pill ${isRunning ? 'success' : 'warning'}">${sched.status || 'STANDBY'}</span></span>
+        <span class="kpi-subtext">Interval: ${sched.intervalMinutes ?? 5} min (${sched.intervalMs ?? 300000} ms)</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Cycle Telemetry</span>
+        <span class="kpi-value">${sched.successfulRuns ?? 0} / ${sched.totalRuns ?? 0}</span>
+        <span class="kpi-subtext">Succeeded · ${sched.skippedRuns ?? 0} Skipped · ${sched.failedRuns ?? 0} Failed</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Last Execution</span>
+        <span class="kpi-value" style="font-size: 1rem;">${sched.lastCompletedAt ? new Date(sched.lastCompletedAt).toLocaleTimeString() : 'Pending initial'}</span>
+        <span class="kpi-subtext">Status: ${sched.lastRunStatus || 'NONE'} (${sched.lastRunDurationMs ?? 0} ms)</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Next Scheduled Run</span>
+        <span class="kpi-value" style="font-size: 1rem;">${sched.nextRunAt ? new Date(sched.nextRunAt).toLocaleTimeString() : '—'}</span>
+        <span class="kpi-subtext">Slot Mutex Protected</span>
+      </div>
+    `;
+  } catch (err) {
+    grid.innerHTML = `<div class="kpi-card"><span class="kpi-label">Daemon Status</span><span class="kpi-subtext error">${err.message}</span></div>`;
+  }
+}
+
 function attachConnectorEvents(container) {
   const refreshBtn = container.querySelector('#refresh-connectors-btn');
+  const refreshSchedBtn = container.querySelector('#refresh-scheduler-btn');
+  const triggerSchedBtn = container.querySelector('#trigger-scheduler-btn');
+  const schedMsgEl = container.querySelector('#scheduler-action-message');
   const fileInput = container.querySelector('#structured-file-input');
   const selectedLabel = container.querySelector('#selected-file-label');
   const discoverBtn = container.querySelector('#discover-schema-btn');
@@ -162,6 +253,32 @@ function attachConnectorEvents(container) {
   let uploadedFilename = '';
 
   refreshBtn?.addEventListener('click', () => loadConnectorsList(container));
+  refreshSchedBtn?.addEventListener('click', () => loadSchedulerStatus(container));
+
+  triggerSchedBtn?.addEventListener('click', async () => {
+    triggerSchedBtn.disabled = true;
+    triggerSchedBtn.textContent = 'Executing Cycle…';
+    if (schedMsgEl) {
+      schedMsgEl.textContent = 'Running autonomous exposure recalculation and monitoring job…';
+      schedMsgEl.className = 'form-message';
+    }
+    try {
+      const outcome = await triggerV2SchedulerCycle(true);
+      if (schedMsgEl) {
+        schedMsgEl.textContent = `Cycle ${outcome.status}: Slot ${outcome.slotKey} | Run ID: ${outcome.runId || 'N/A'} | Snapshots Recalculated: ${outcome.snapshotCount ?? 0} | Duration: ${outcome.durationMs ?? 0} ms`;
+        schedMsgEl.className = 'form-message success';
+      }
+      await loadSchedulerStatus(container);
+    } catch (err) {
+      if (schedMsgEl) {
+        schedMsgEl.textContent = `Autonomous cycle failed: ${err.message}`;
+        schedMsgEl.className = 'form-message error';
+      }
+    } finally {
+      triggerSchedBtn.disabled = false;
+      triggerSchedBtn.textContent = 'Run Cycle Now';
+    }
+  });
 
   fileInput?.addEventListener('change', e => {
     const file = e.target.files?.[0];

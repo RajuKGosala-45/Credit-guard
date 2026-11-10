@@ -19,6 +19,10 @@ const {
   recoverMonitoringRun
 } = require('./monitoringService');
 const { startMonitoringWorker } = require('./monitoringWorker');
+const {
+  getAutonomousSchedulerInstance,
+  startAutonomousScheduler
+} = require('./autonomousScheduler');
 const { ENTITY_TYPES, isValidTimestamp } = require('./canonicalData');
 const { createConfiguredIngestionRuntime } = require('./ingestionRuntime');
 const { getPublicDatabaseStatus } = require('./hanaConnection');
@@ -54,6 +58,12 @@ const {
   executeCanonicalAgentTool,
   runCanonicalAgentQuery
 } = require('./canonicalAgentTools');
+const {
+  DEFAULT_AUTONOMOUS_CREDIT_POLICY,
+  evaluateCustomerAutonomousDecision,
+  evaluatePortfolioAutonomousActions,
+  processPendingRequestsAutonomously
+} = require('./autonomousDecisionEngine');
 const mockSapFixture = require('./integrations/mock-sap/fixtures.json');
 const { getMockSapSourceDefinition } = require('./integrations/mock-sap/connector');
 const {
@@ -560,6 +570,44 @@ cds.on('bootstrap', app => {
     }
   });
 
+  app.get('/api/v2/monitoring/heartbeat', (_req, res) => {
+    const scheduler = getAutonomousSchedulerInstance();
+    return res.status(200).json({
+      status: 'live',
+      timestamp: new Date().toISOString(),
+      scheduler: scheduler ? scheduler.getStatus() : { status: 'STANDBY' }
+    });
+  });
+
+  app.get('/api/v2/monitoring/scheduler-status', requireRole('CreditReader'), (_req, res) => {
+    const scheduler = getAutonomousSchedulerInstance();
+    if (!scheduler) {
+      return res.status(200).json({
+        status: 'STANDBY',
+        message: 'Autonomous monitoring scheduler is not currently active.'
+      });
+    }
+    return res.status(200).json(scheduler.getStatus());
+  });
+
+  app.post('/api/v2/monitoring/scheduler-trigger', requireAnyRole('CreditReader', 'CreditMonitor', 'CreditAnalyst', 'CreditManager', 'CreditAdmin'), async (req, res) => {
+    try {
+      const scheduler = getAutonomousSchedulerInstance();
+      if (!scheduler) {
+        return res.status(503).json({ error: 'Autonomous monitoring scheduler is not active.' });
+      }
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const outcome = await scheduler.executeCycle({
+        force: body.force !== false,
+        referenceDate: body.referenceDate || '2026-11-09',
+        triggeredBy: req.user?.id || 'manual-trigger'
+      });
+      return res.status(200).json(outcome);
+    } catch (error) {
+      return res.status(500).json({ error: error.message || 'Autonomous cycle execution failed.' });
+    }
+  });
+
   app.get('/api/v2/workflow/limit-requests', requireRole('CreditReader'), async (req, res) => {
     try {
       const rows = await listEnrichedCanonicalLimitRequests(cds.db, {
@@ -649,6 +697,62 @@ cds.on('bootstrap', app => {
     } catch (error) {
       return res.status(error.statusCode || 400).json({
         error: error.message || 'SAP credit limit synchronization failed.'
+      });
+    }
+  });
+
+  app.get('/api/v2/autonomous/policy', requireRole('CreditReader'), (_req, res) => {
+    return res.json({
+      policy: DEFAULT_AUTONOMOUS_CREDIT_POLICY,
+      sapVerificationDefault: false,
+      sapVerificationNote: SAP_VERIFICATION_NOTE
+    });
+  });
+
+  app.post('/api/v2/autonomous/evaluate-customer', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const evaluation = await evaluateCustomerAutonomousDecision(cds.db, body.bpId || body.customerId, {
+        requestedLimit: body.requestedLimit,
+        policy: body.policy,
+        referenceDate: body.referenceDate || '2026-11-09'
+      });
+      return res.json(evaluation);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || 'Autonomous customer credit evaluation failed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/autonomous/process-pending', requireAnyRole('CreditReader', 'CreditRequester', 'CreditController', 'CreditManager', 'FinanceHead', 'CreditApprover', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const result = await processPendingRequestsAutonomously(cds.db, {
+        policy: body.policy,
+        referenceDate: body.referenceDate || '2026-11-09',
+        autoSyncToSap: body.autoSyncToSap !== false
+      });
+      return res.json(result);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Autonomous processing of pending requests failed.'
+      });
+    }
+  });
+
+  app.post('/api/v2/autonomous/scan-portfolio', requireAnyRole('CreditReader', 'CreditRequester', 'CreditController', 'CreditManager', 'FinanceHead', 'CreditApprover', 'CreditAdmin'), async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const result = await evaluatePortfolioAutonomousActions(cds.db, {
+        policy: body.policy,
+        referenceDate: body.referenceDate || '2026-11-09',
+        autoCreateAndExecute: Boolean(body.autoCreateAndExecute)
+      });
+      return res.json(result);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Autonomous portfolio scan failed.'
       });
     }
   });
@@ -1378,10 +1482,17 @@ cds.on('bootstrap', app => {
 });
 
 let stopMonitoringWorker;
+let stopAutonomousScheduler;
 cds.on('listening', () => {
   seedCanonicalFromLegacyDemo(cds.db).catch(() => {});
   stopMonitoringWorker = startMonitoringWorker(cds.db);
+  if (process.env.DISABLE_AUTONOMOUS_SCHEDULER !== 'true') {
+    stopAutonomousScheduler = startAutonomousScheduler(cds.db);
+  }
 });
 cds.on('shutdown', async () => {
-  await stopMonitoringWorker?.();
+  await Promise.allSettled([
+    stopAutonomousScheduler?.(),
+    stopMonitoringWorker?.()
+  ]);
 });

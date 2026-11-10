@@ -43,6 +43,7 @@ async function startCapServer({ env = {}, probePath = '/api/dashboard' } = {}) {
       GEMINI_API_KEY: '',
       LLM_PROVIDER: 'offline',
       AGENT_MEMORY_ENABLED: 'true',
+      DISABLE_AUTONOMOUS_SCHEDULER: 'true',
       ...env
     },
     stdio: ['ignore', 'pipe', 'pipe']

@@ -293,3 +293,23 @@ export const queryV2Agent = payload => request('/api/v2/agent/query', {
   body: JSON.stringify(payload)
 });
 
+export const getV2SchedulerStatus = () => request('/api/v2/monitoring/scheduler-status');
+export const triggerV2SchedulerCycle = (force = true) => request('/api/v2/monitoring/scheduler-trigger', {
+  method: 'POST',
+  body: JSON.stringify({ force })
+});
+
+export const getV2AutonomousPolicy = () => request('/api/v2/autonomous/policy');
+export const evaluateV2CustomerAutonomousDecision = payload => request('/api/v2/autonomous/evaluate-customer', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const processV2PendingAutonomousRequests = (payload = {}) => request('/api/v2/autonomous/process-pending', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+export const scanV2PortfolioAutonomousActions = (payload = {}) => request('/api/v2/autonomous/scan-portfolio', {
+  method: 'POST',
+  body: JSON.stringify(payload)
+});
+

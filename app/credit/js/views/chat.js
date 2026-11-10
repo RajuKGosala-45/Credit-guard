@@ -1,25 +1,55 @@
 import { escapeHTML } from '../utils.js';
 
+function formatAssistantReply(text) {
+  if (!text) return '';
+  let html = escapeHTML(text);
+
+  // Highlight customer IDs like C001, C002
+  html = html.replace(/\b((?:MS-)?C\d{3})\b/g, '<code style="background: var(--color-blue-soft); color: var(--color-blue); padding: 0.1rem 0.3rem; border-radius: 4px; font-weight: 600;">$1</code>');
+
+  // Highlight monetary amounts
+  html = html.replace(/\b(₹\s*[\d,]+(?:\.\d+)?|\bINR\s*[\d,]+(?:\.\d+)?)\b/g, '<strong style="color: var(--color-ink);">$1</strong>');
+
+  // Highlight percentages with colored status chips
+  html = html.replace(/\b(\d+(?:\.\d+)?%)\b/g, (match, pct) => {
+    const val = parseFloat(pct);
+    const cls = val >= 100 ? 'chip breach' : val >= 80 ? 'chip warning' : 'chip healthy';
+    return `<span class="${cls}" style="display: inline-block; margin: 0 2px;">${pct}</span>`;
+  });
+
+  // Format bullet points or numbered lists nicely
+  html = html.replace(/(\(\d+\)|\d+\.)\s+/g, '<br><strong>$1</strong> ');
+
+  // Paragraph spacing
+  html = html.replace(/\n\n/g, '</p><p style="margin-top: 0.75rem; margin-bottom: 0;">');
+  html = html.replace(/\n/g, '<br>');
+
+  return `<div class="structured-assistant-reply" style="line-height: 1.5; font-size: 0.95rem;"><p style="margin: 0;">${html}</p></div>`;
+}
+
 export function renderChat(messages, execution = null, permissions = null) {
   const host = document.querySelector('#chat-messages');
   if (!messages.length) {
-    host.innerHTML = '<p class="empty-state">Ask about exposure, flagged customers, or a customer ID such as C001. Without an API key, the assistant uses the same live data tools in offline demo mode.</p>';
+    host.innerHTML = '<p class="empty-state">Ask about exposure, flagged customers, or a customer ID such as C001. The assistant provides structured, policy-grounded analytics with provenance and tool traceability.</p>';
     return;
   }
   host.innerHTML = messages.map(message => {
     const providerLabel = message.provider === 'offline' ? 'Offline fallback'
-      : message.provider === 'gemini' ? 'Gemini'
+      : message.provider === 'gemini' ? 'Gemini AI'
         : message.provider === 'anthropic' ? 'Anthropic' : 'Configured provider';
     const provenance = message.role === 'assistant' && message.provider
-      ? `<small class="chat-provenance"><span class="chip ${message.provider === 'offline' ? 'review' : 'healthy'}">${escapeHTML(providerLabel)}</span>
-        ${message.modulesUsed?.length ? `<span>Modules: ${escapeHTML(message.modulesUsed.join(', '))}</span>` : ''}
-        ${message.dataSourcesUsed?.length ? `<span>Sources: ${escapeHTML(message.dataSourcesUsed.map(source => source.name).join(', '))}</span>` : ''}
-        ${message.providerFallbackReason ? `<span>Fallback reason: ${escapeHTML(message.providerFallbackReason.replaceAll('_', ' '))}</span>` : ''}</small>`
+      ? `<small class="chat-provenance" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border); font-size: 0.75rem;"><span class="chip ${message.provider === 'offline' ? 'review' : 'healthy'}">${escapeHTML(providerLabel)}</span>
+        ${message.modulesUsed?.length ? `<span style="background: var(--color-canvas); padding: 0.1rem 0.4rem; border-radius: 4px;">Modules: ${escapeHTML(message.modulesUsed.join(', '))}</span>` : ''}
+        ${message.dataSourcesUsed?.length ? `<span style="background: var(--color-canvas); padding: 0.1rem 0.4rem; border-radius: 4px;">Sources: ${escapeHTML(message.dataSourcesUsed.map(source => source.name).join(', '))}</span>` : ''}
+        ${message.providerFallbackReason ? `<span style="color: var(--color-amber);">Fallback: ${escapeHTML(message.providerFallbackReason.replaceAll('_', ' '))}</span>` : ''}</small>`
       : '';
     const text = message.provider
       ? message.text.replace(/\n\nResponse provider: [^\n]*$/, '')
       : message.text;
-    return `<div class="chat-message ${message.role === 'user' ? 'user' : 'assistant'}">${provenance}${escapeHTML(text)}</div>`;
+    const contentHtml = message.role === 'assistant'
+      ? formatAssistantReply(text)
+      : `<p style="margin: 0; font-weight: 500;">${escapeHTML(text)}</p>`;
+    return `<div class="chat-message ${message.role === 'user' ? 'user' : 'assistant'}" style="background: ${message.role === 'user' ? 'var(--color-blue-soft)' : 'var(--color-white)'}; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 0.75rem; box-shadow: var(--shadow-card);">${provenance}${contentHtml}</div>`;
   }).join('');
   host.scrollTop = host.scrollHeight;
   renderExecution(execution, permissions);
@@ -35,26 +65,26 @@ function renderExecution(execution, permissions) {
   }
   host.hidden = false;
   const steps = (execution.steps || []).map(step =>
-    `<li><strong>${escapeHTML(step.tool)}</strong> · ${escapeHTML(step.status)} — ${escapeHTML(step.summary)}</li>`
+    `<li style="margin-bottom: 0.35rem;"><strong>${escapeHTML(step.tool)}</strong> <span class="chip ${step.status === 'SUCCESS' ? 'healthy' : 'warning'}">${escapeHTML(step.status)}</span> — <span class="muted">${escapeHTML(step.summary)}</span></li>`
   ).join('');
-  const proposals = (execution.preparedActions || []).map(proposal => `<article class="approval-item">
-    <strong>Approval required: ${escapeHTML(proposal.customerName)} · ${escapeHTML(proposal.customerId)}</strong>
-    <p>${escapeHTML(proposal.reason)}</p>
-    <p>${escapeHTML(String(proposal.currentLimit))} → ${escapeHTML(String(proposal.requestedLimit))} · Routed to ${escapeHTML(proposal.approverLevel)}</p>
-    ${permissions?.canRequest ? `<button class="button primary" type="button" data-submit-proposal="true" data-proposal-index="${(execution.preparedActions || []).indexOf(proposal)}">Submit request for human approval</button>` : ''}
+  const proposals = (execution.preparedActions || []).map(proposal => `<article class="approval-item" style="border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 1rem; margin-top: 0.75rem; background: var(--color-white);">
+    <strong>Approval required: ${escapeHTML(proposal.customerName)} · <code>${escapeHTML(proposal.customerId)}</code></strong>
+    <p class="muted" style="margin: 0.25rem 0;">${escapeHTML(proposal.reason)}</p>
+    <p style="font-family: var(--font-mono); font-size: 0.85rem; margin: 0.25rem 0;">₹${escapeHTML(String(proposal.currentLimit))} → <strong>₹${escapeHTML(String(proposal.requestedLimit))}</strong> · Routed to <strong>${escapeHTML(proposal.approverLevel)}</strong></p>
+    ${permissions?.canRequest ? `<button class="button primary" type="button" data-submit-proposal="true" data-proposal-index="${(execution.preparedActions || []).indexOf(proposal)}" style="margin-top: 0.5rem;">Submit request for human approval</button>` : ''}
   </article>`).join('');
   const preview = execution.workflowPreview;
-  const workflow = preview ? `<section class="workflow-preview">
-    <h3>${escapeHTML(preview.name)} · Preview only</h3>
-    <p class="muted">${escapeHTML(preview.source)} No workflow steps have been executed.</p>
-    <ol>${preview.steps.map(step => `<li>
+  const workflow = preview ? `<section class="workflow-preview" style="background: var(--color-canvas); border-radius: var(--radius-sm); padding: 1rem; margin-top: 0.75rem;">
+    <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${escapeHTML(preview.name)} · Preview only</h3>
+    <p class="muted" style="margin-bottom: 0.75rem;">${escapeHTML(preview.source)} No workflow steps have been executed.</p>
+    <ol style="padding-left: 1.25rem;">${preview.steps.map(step => `<li style="margin-bottom: 0.5rem;">
       <strong>${escapeHTML(step.module)} · ${escapeHTML(step.operation)}</strong>
-      <p class="workflow-step-details">Depends on: ${escapeHTML(step.dependsOn.length ? step.dependsOn.join(', ') : 'None')} · Required roles: ${escapeHTML(step.requiredRoles.join(', '))} · Confirmation: ${escapeHTML(step.confirmation)}</p>
-      <p class="workflow-step-details">Expected result: ${escapeHTML(step.expectedResult)}</p>
+      <p class="workflow-step-details muted" style="margin: 0.15rem 0; font-size: 0.8rem;">Depends on: ${escapeHTML(step.dependsOn.length ? step.dependsOn.join(', ') : 'None')} · Roles: ${escapeHTML(step.requiredRoles.join(', '))} · Confirmation: ${escapeHTML(step.confirmation)}</p>
+      <p class="workflow-step-details" style="margin: 0; font-size: 0.85rem;">Expected result: ${escapeHTML(step.expectedResult)}</p>
     </li>`).join('')}</ol>
-    <ul class="workflow-limitations">${preview.limitations.map(limitation => `<li>${escapeHTML(limitation)}</li>`).join('')}</ul>
+    <ul class="workflow-limitations" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-muted);">${preview.limitations.map(limitation => `<li>${escapeHTML(limitation)}</li>`).join('')}</ul>
   </section>` : '';
-  host.innerHTML = `<p class="muted">Execution ${escapeHTML(execution.status)} · ${steps ? 'Tool activity:' : 'No tools used.'}</p>${steps ? `<ol>${steps}</ol>` : ''}${workflow}${proposals}`;
+  host.innerHTML = `<div style="background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow-card);"><p style="font-weight: 600; margin-bottom: 0.5rem;">Execution Status: <span class="chip ${execution.status === 'COMPLETED' ? 'healthy' : 'warning'}">${escapeHTML(execution.status)}</span></p>${steps ? `<p class="muted" style="font-size: 0.85rem; margin-bottom: 0.25rem;">Tool Activity Trace:</p><ul style="padding-left: 1.25rem; font-size: 0.85rem;">${steps}</ul>` : '<p class="muted">No tools invoked for this response.</p>'}${workflow}${proposals}</div>`;
 }
 
 export async function handleChatSubmit(event, send, messages, documentContext, state) {
