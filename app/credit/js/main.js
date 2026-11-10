@@ -429,12 +429,33 @@ document.querySelector('#home-quick-ai-form')?.addEventListener('submit', event 
   const input = document.querySelector('#home-quick-ai-input');
   const promptText = input?.value?.trim();
   if (!promptText) return;
+
+  // 1. Switch to AI Credit Assistance main tab
   switchTab('chat');
+
+  // 2. Activate AI Credit Control sub-tab shortcut
+  const firstShortcutBtn = document.querySelector('#section-shortcuts-bar [data-target="sec-chat-control"]');
+  if (firstShortcutBtn) {
+    document.querySelectorAll('.shortcut-tab-btn').forEach(b => b.classList.remove('active'));
+    firstShortcutBtn.classList.add('active');
+  }
+
+  // 3. Scroll directly to AI Credit Control section
+  const controlSection = document.getElementById('sec-chat-control');
+  if (controlSection) {
+    controlSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // 4. Transfer query into chat input and submit
   const chatInput = document.querySelector('#chat-input');
   if (chatInput) {
     chatInput.value = promptText;
-    document.querySelector('#chat-form').requestSubmit();
+    const chatForm = document.querySelector('#chat-form');
+    if (chatForm) {
+      chatForm.requestSubmit();
+    }
   }
+
   input.value = '';
 });
 
