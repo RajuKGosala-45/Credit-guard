@@ -424,6 +424,20 @@ document.querySelector('#home-open-ai-btn')?.addEventListener('click', () => {
   switchTab('chat');
 });
 
+document.querySelector('#home-quick-ai-form')?.addEventListener('submit', event => {
+  event.preventDefault();
+  const input = document.querySelector('#home-quick-ai-input');
+  const promptText = input?.value?.trim();
+  if (!promptText) return;
+  switchTab('chat');
+  const chatInput = document.querySelector('#chat-input');
+  if (chatInput) {
+    chatInput.value = promptText;
+    document.querySelector('#chat-form').requestSubmit();
+  }
+  input.value = '';
+});
+
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-tab]');
   if (!button) return;

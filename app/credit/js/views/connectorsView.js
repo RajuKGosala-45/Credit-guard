@@ -163,26 +163,34 @@ async function loadConnectorsList(container) {
   try {
     const data = await getV2Connectors();
     const sources = data.sources || [];
+    kpiGrid.style.cssText = 'display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem;';
     kpiGrid.innerHTML = `
-      <div class="kpi-card">
-        <span class="kpi-label">Active Sources</span>
-        <span class="kpi-value">${sources.filter(s => s.status === 'ACTIVE').length}</span>
-        <span class="kpi-subtext">of ${sources.length} registered</span>
+      <div class="kpi-card" style="position: relative; overflow: hidden; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.25rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 0.35rem;">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #1a73e8;"></div>
+        <span class="kpi-label" style="font-size: 0.825rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Active Sources</span>
+        <span class="kpi-value" style="font-size: 1.75rem; font-weight: 700; color: #1a73e8; line-height: 1.2;">${sources.filter(s => s.status === 'ACTIVE').length} / ${sources.length}</span>
+        <span class="kpi-subtext" style="font-size: 0.8rem; font-weight: 400; color: #64748b;">Registered connectors</span>
       </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Field Mappings</span>
-        <span class="kpi-value">${data.mappingsCount || 0}</span>
-        <span class="kpi-subtext">in CG_FIELD_MAPPING</span>
+
+      <div class="kpi-card" style="position: relative; overflow: hidden; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.25rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 0.35rem;">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #7c3aed;"></div>
+        <span class="kpi-label" style="font-size: 0.825rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Field Mappings</span>
+        <span class="kpi-value" style="font-size: 1.75rem; font-weight: 700; color: #7c3aed; line-height: 1.2;">${data.mappingsCount || 0}</span>
+        <span class="kpi-subtext" style="font-size: 0.8rem; font-weight: 400; color: #64748b;">in CG_FIELD_MAPPING</span>
       </div>
-      <div class="kpi-card">
-        <span class="kpi-label">SAP Candidate Services</span>
-        <span class="kpi-value">${(data.sapCandidateODataServices || []).length}</span>
-        <span class="kpi-subtext">OData &amp; CDS views</span>
+
+      <div class="kpi-card" style="position: relative; overflow: hidden; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.25rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 0.35rem;">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #0d9488;"></div>
+        <span class="kpi-label" style="font-size: 0.825rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">SAP Candidate Services</span>
+        <span class="kpi-value" style="font-size: 1.75rem; font-weight: 700; color: #0d9488; line-height: 1.2;">${(data.sapCandidateODataServices || []).length}</span>
+        <span class="kpi-subtext" style="font-size: 0.8rem; font-weight: 400; color: #64748b;">OData &amp; CDS Views</span>
       </div>
-      <div class="kpi-card">
-        <span class="kpi-label">HANA Tables</span>
-        <span class="kpi-value">${(data.hanaReplicatedTables || []).length}</span>
-        <span class="kpi-subtext">Replicated tables</span>
+
+      <div class="kpi-card" style="position: relative; overflow: hidden; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.25rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 0.35rem;">
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #0b8043;"></div>
+        <span class="kpi-label" style="font-size: 0.825rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">HANA Tables</span>
+        <span class="kpi-value" style="font-size: 1.75rem; font-weight: 700; color: #0b8043; line-height: 1.2;">${(data.hanaReplicatedTables || []).length}</span>
+        <span class="kpi-subtext" style="font-size: 0.8rem; font-weight: 400; color: #64748b;">Replicated Tables</span>
       </div>
     `;
 
