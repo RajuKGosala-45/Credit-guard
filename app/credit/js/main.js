@@ -16,6 +16,10 @@ import { renderDataSourcesPanel, renderSchedulerPanel, loadSchedulerStatus } fro
 const errorHost = document.querySelector('#global-error');
 const pageCopy = Object.freeze({
   chat: [
+    'AI Credit Assistance',
+    'Ask policy-grounded credit questions, evaluate customer risk, draft limit change proposals, and inspect agent execution history.'
+  ],
+  overview: [
     'Credit overview',
     'Review a controlled portfolio across five legal entities. Data freshness is not supplied by this local demo.'
   ],
@@ -54,6 +58,11 @@ const tabSections = {
     { id: 'sec-audit-memory', label: 'Audit & Memory' },
     { id: 'sec-enterprise-integration', label: 'Enterprise Integration' }
   ],
+  overview: [
+    { id: 'sec-overview-kpis', label: 'Portfolio KPIs' },
+    { id: 'sec-overview-exposure', label: 'Country & Entity Exposure' },
+    { id: 'sec-overview-risk', label: 'Risk Summary & Alerts' }
+  ],
   dashboard: [
     { id: 'sec-monitoring', label: 'Manual Credit Monitoring' },
     { id: 'sec-limit-request', label: 'Request Limit Change' }
@@ -90,13 +99,28 @@ function renderSectionShortcuts(tab) {
   `).join('');
 }
 
+function scrollWorkspaceToSection(el) {
+  if (!el) return;
+  const wsMain = document.querySelector('.workspace-main');
+  if (wsMain) {
+    const shortcutBar = document.querySelector('#section-shortcuts-bar');
+    const stickyOffset = shortcutBar && shortcutBar.offsetHeight ? shortcutBar.offsetHeight + 16 : 56;
+    const mainRect = wsMain.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const targetTop = wsMain.scrollTop + (elRect.top - mainRect.top) - stickyOffset;
+    wsMain.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+  } else {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
 document.querySelector('#section-shortcuts-bar')?.addEventListener('click', e => {
   const btn = e.target.closest('[data-target]');
   if (!btn) return;
   const targetId = btn.dataset.target;
   const el = document.getElementById(targetId);
   if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollWorkspaceToSection(el);
     document.querySelectorAll('.shortcut-tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   }
@@ -109,9 +133,14 @@ function switchTab(tabName) {
 
   const homeContainer = document.querySelector('#home-view-container');
   const appContainer = document.querySelector('#app-workspace-container');
+  const wsMain = document.querySelector('.workspace-main');
 
-  if (homeContainer) homeContainer.style.display = isHome ? 'block' : 'none';
+  if (homeContainer) {
+    homeContainer.style.display = isHome ? 'flex' : 'none';
+    homeContainer.scrollTop = 0;
+  }
   if (appContainer) appContainer.style.display = isHome ? 'none' : 'grid';
+  if (wsMain) wsMain.scrollTop = 0;
 
   if (!isHome) {
     updatePageHeading(state.currentTab);
@@ -132,6 +161,9 @@ function switchTab(tabName) {
     panel.style.removeProperty('display');
   });
 
+  if (state.currentTab === 'overview') {
+    Promise.all([loadPortfolio(), loadMonitoring()]).catch(error => showError(error.message));
+  }
   if (state.currentTab === 'dashboard') {
     Promise.all([loadMonitoring(), loadPortfolio()]).catch(error => showError(error.message));
   }
@@ -162,6 +194,8 @@ function canAttemptExecutionRecovery(execution) {
 
 function refreshPortfolio() {
   renderKpis(state.dashboard.kpis);
+  renderExposure(state.dashboard, 'country', '#overview-country-exposure');
+  renderExposure(state.dashboard, 'companyCode', '#overview-company-exposure');
   renderExposure(state.dashboard, state.exposureGroup);
   renderExposure(state.dashboard, 'customer', '#customer-exposure-list');
   renderCustomers(state.customers);
@@ -404,43 +438,45 @@ document.querySelector('#monitoring-history').addEventListener('click', async ev
   }
 });
 
-document.querySelector('#home-open-ai-btn')?.addEventListener('click', () => {
-  switchTab('chat');
-});
-
-document.querySelector('#home-quick-ai-form')?.addEventListener('submit', event => {
-  event.preventDefault();
-  const input = document.querySelector('#home-quick-ai-input');
-  const promptText = input?.value?.trim();
-  if (!promptText) return;
-
-  // 1. Switch to AI Credit Assistance main tab
+function openAiCreditAssistanceWorkspace(promptText = '') {
   switchTab('chat');
 
-  // 2. Activate AI Credit Control sub-tab shortcut
   const firstShortcutBtn = document.querySelector('#section-shortcuts-bar [data-target="sec-chat-control"]');
   if (firstShortcutBtn) {
     document.querySelectorAll('.shortcut-tab-btn').forEach(b => b.classList.remove('active'));
     firstShortcutBtn.classList.add('active');
   }
 
-  // 3. Scroll directly to AI Credit Control section
-  const controlSection = document.getElementById('sec-chat-control');
-  if (controlSection) {
-    controlSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  // 4. Transfer query into chat input and submit
   const chatInput = document.querySelector('#chat-input');
   if (chatInput) {
-    chatInput.value = promptText;
-    const chatForm = document.querySelector('#chat-form');
-    if (chatForm) {
-      chatForm.requestSubmit();
+    chatInput.focus({ preventScroll: true });
+    if (promptText) {
+      chatInput.value = promptText;
+      const chatForm = document.querySelector('#chat-form');
+      if (chatForm) {
+        chatForm.requestSubmit();
+      }
     }
   }
+}
 
-  input.value = '';
+document.querySelector('#home-open-ai-btn')?.addEventListener('click', () => {
+  openAiCreditAssistanceWorkspace();
+});
+
+document.querySelector('#home-quick-ai-input')?.addEventListener('click', () => {
+  const input = document.querySelector('#home-quick-ai-input');
+  const promptText = input?.value?.trim() || '';
+  if (input) input.value = '';
+  openAiCreditAssistanceWorkspace(promptText);
+});
+
+document.querySelector('#home-quick-ai-form')?.addEventListener('submit', event => {
+  event.preventDefault();
+  const input = document.querySelector('#home-quick-ai-input');
+  const promptText = input?.value?.trim() || '';
+  if (input) input.value = '';
+  openAiCreditAssistanceWorkspace(promptText);
 });
 
 document.addEventListener('click', event => {

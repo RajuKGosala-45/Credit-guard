@@ -5,7 +5,7 @@
   --color-sidebar-bg: #ffffff;
   --color-sidebar-surface: #f1f5f9;
   --color-sidebar-hover: #e2e8f0;
-  --color-sidebar-border: #cbd5e1;
+  --color-sidebar-border: #DCE3ED;
   --color-brand-subtle: #cbd5e1;
   --color-live: #16a34a;
   --color-upload-border: #cbd5e1;
@@ -42,9 +42,9 @@
   --size-brand-mark: 2.35rem;
   --size-live-dot: 0.5rem;
   --size-bar-height: 0.5rem;
-  --size-chat-min-height: 16rem;
+  --size-chat-min-height: 11.5rem;
   --size-chat-max-height: 30rem;
-  --sidebar-width: 15.5rem;
+  --sidebar-width: 280px;
   --shadow-card: 0 2px 6px var(--color-shadow);
   --content-width: 92rem;
 }

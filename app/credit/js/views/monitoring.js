@@ -94,21 +94,62 @@ export function renderMonitoring({ summary, runs, alerts, findings }) {
   const canOperate = summary.canOperate === true;
   document.querySelector('#run-monitoring').hidden = !canOperate;
   renderCounts(runSummary, summary.activeAlertCount);
-  document.querySelector('#monitoring-status').textContent = latest
+  const statusText = latest
     ? `Latest run ${latest.status} · ${latest.source || 'source unavailable'} · retrieved ${dateTime(latest.retrievedAt)} · source freshness ${latest.freshness || 'UNKNOWN'} · last successful ${dateTime(summary.lastSuccessfulAt)}`
     : 'No monitoring run is available yet.';
+  document.querySelector('#monitoring-status').textContent = statusText;
   document.querySelector('#monitoring-error').textContent = latest
     && ['FAILED', 'PARTIAL', 'STALE'].includes(latest.status)
     ? `Latest monitoring run is ${latest.status.toLowerCase()}${latest.errorCategory ? ` (${latest.errorCategory})` : ''}. Review source availability and freshness before relying on findings.`
     : '';
-  document.querySelector('#monitoring-advisory').textContent = latest?.advisorySummary
+  const advisoryText = latest?.advisorySummary
     || 'Run monitoring to see a deterministic portfolio summary.';
-  document.querySelector('#monitoring-advisory-source').textContent = latest?.advisorySource === 'AI_ADVISORY'
+  const advisorySourceText = latest?.advisorySource === 'AI_ADVISORY'
     ? 'AI-assisted advisory; deterministic findings remain authoritative.'
     : latest?.advisorySource === 'DETERMINISTIC'
       ? 'Deterministic fallback summary; no external AI summary was used.'
       : '';
+  document.querySelector('#monitoring-advisory').textContent = advisoryText;
+  document.querySelector('#monitoring-advisory-source').textContent = advisorySourceText;
   renderAlerts(alerts, canOperate);
   renderFindings(findings);
   renderHistory(runs, canOperate);
+
+  const overviewStatus = document.querySelector('#overview-monitoring-status');
+  if (overviewStatus) overviewStatus.textContent = statusText;
+  const overviewRisk = document.querySelector('#overview-risk-summary');
+  if (overviewRisk) overviewRisk.textContent = advisoryText;
+  const overviewSource = document.querySelector('#overview-risk-source');
+  if (overviewSource) overviewSource.textContent = advisorySourceText;
+  const overviewAlerts = document.querySelector('#overview-active-alerts');
+  if (overviewAlerts) {
+    overviewAlerts.innerHTML = !alerts.length
+      ? '<p class="empty-state">No active monitoring alerts.</p>'
+      : alerts.slice(0, 5).map(alert => `
+        <article class="monitoring-alert">
+          <div>
+            <span class="chip ${statusClass(alert.severity)}">${escapeHTML(alert.severity)}</span>
+            <span class="chip ${statusClass(alert.status)}">${escapeHTML(alert.status)}</span>
+            <strong>${escapeHTML(alert.customerName)}</strong>
+            <span>${escapeHTML(alert.conditionKey.replaceAll('_', ' ').toLowerCase())}</span>
+            <p class="muted">${escapeHTML(formatPercent(alert.utilisation))} utilisation · ${escapeHTML(formatMoney(alert.overdueAmount, alert.currency))} overdue</p>
+          </div>
+        </article>
+      `).join('');
+  }
+  const overviewFindings = document.querySelector('#overview-findings');
+  if (overviewFindings) {
+    overviewFindings.innerHTML = !findings.length
+      ? '<p class="empty-state">No customer findings are stored for the latest run.</p>'
+      : `<table><thead><tr><th>Customer</th><th>Severity</th><th>Exposure</th><th>Utilisation</th><th>Overdue</th></tr></thead><tbody>
+        ${findings.slice(0, 6).map(finding => `<tr>
+          <td>${escapeHTML(finding.customerName)} (${escapeHTML(finding.customer_ID)})</td>
+          <td><span class="chip ${statusClass(finding.severity)}">${escapeHTML(finding.severity)}</span></td>
+          <td>${escapeHTML(formatMoney(finding.exposure, finding.currency))}</td>
+          <td>${escapeHTML(formatPercent(finding.utilisation))}</td>
+          <td>${escapeHTML(formatMoney(finding.overdueAmount, finding.currency))}</td>
+        </tr>`).join('')}
+      </tbody></table>`;
+  }
 }
+

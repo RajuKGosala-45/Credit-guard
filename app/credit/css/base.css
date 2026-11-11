@@ -1,5 +1,21 @@
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font-family: var(--font-body); font-size: var(--font-size-md); line-height: 1.5; }
+html, body {
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -9,3 +25,4 @@ h2 { margin-bottom: 0; font-size: var(--font-size-lg); }
 small { display: block; }
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+

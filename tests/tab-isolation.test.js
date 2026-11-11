@@ -84,3 +84,77 @@ test('main.js switchTab cleanly removes any inline display style from all tab pa
     'switchTab must call removeProperty("display") to ensure clean state across tab switches'
   );
 });
+
+test('fixed viewport layout locks global page scroll and delegates vertical scrolling to .workspace-main', async () => {
+  const [variablesCss, baseCss, layoutCss, html, js] = await Promise.all([
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'css', 'variables.css'), 'utf8'),
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'css', 'base.css'), 'utf8'),
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'css', 'layout.css'), 'utf8'),
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'index.html'), 'utf8'),
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'js', 'main.js'), 'utf8')
+  ]);
+
+  assert.match(variablesCss, /--sidebar-width:\s*280px;/, '--sidebar-width must be 280px so grid track matches .app-sidebar width with zero overlap');
+  assert.match(baseCss, /html,\s*body\s*\{[\s\S]*?height:\s*100dvh;[\s\S]*?overflow:\s*hidden;/, 'html and body must lock height to 100dvh with overflow: hidden');
+  assert.match(layoutCss, /\.workspace-shell\s*\{[\s\S]*?flex:\s*1\s+1\s+0%;[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;/, '.workspace-shell must fill remaining viewport height with overflow: hidden');
+  assert.match(layoutCss, /\.app-sidebar\s*\{[\s\S]*?width:\s*var\(--sidebar-width\);[\s\S]*?border-right:\s*1px\s+solid\s+#DCE3ED;/i, '.app-sidebar must have consistent width and 1px solid #DCE3ED right divider');
+  assert.match(layoutCss, /\.workspace-main\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?overflow-x:\s*hidden;/, '.workspace-main must scroll independently on the Y axis');
+  assert.match(layoutCss, /\.page-shell\s*\{[\s\S]*?padding:\s*1\.5rem\s+1\.75rem\s+2rem;/, '.page-shell must maintain 1.75rem (28px) horizontal padding from the sidebar divider');
+  assert.doesNotMatch(html, /calc\(100vh\s*-\s*4\.5rem\)/, 'index.html must not use hardcoded calc(100vh - 4.5rem) that overflows the header');
+  assert.match(js, /if\s*\(wsMain\)\s*wsMain\.scrollTop\s*=\s*0;/, 'switchTab must reset .workspace-main scrollTop when changing tabs');
+});
+
+test('KPI cards preserve all four metrics and apply refined enterprise typography and pastel themes', async () => {
+  const [componentsCss, dashboardJs] = await Promise.all([
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'css', 'components.css'), 'utf8'),
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'js', 'views', 'dashboard.js'), 'utf8')
+  ]);
+
+  assert.match(dashboardJs, /'Total exposure'/, 'Total exposure KPI label must be preserved');
+  assert.match(dashboardJs, /'Total credit limit'/, 'Total credit limit KPI label must be preserved');
+  assert.match(dashboardJs, /'Overall utilisation'/, 'Overall utilisation KPI label must be preserved');
+  assert.match(dashboardJs, /'Overdue invoices'/, 'Overdue invoices KPI label must be preserved');
+  assert.match(dashboardJs, /kpi-card--exposure/, 'Exposure card theme class must be applied');
+  assert.match(dashboardJs, /kpi-card--limit/, 'Limit card theme class must be applied');
+  assert.match(dashboardJs, /kpi-card--utilisation/, 'Utilisation card theme class must be applied');
+  assert.match(dashboardJs, /kpi-card--overdue/, 'Overdue card theme class must be applied');
+  assert.match(componentsCss, /\.kpi-value\s*\{[\s\S]*?font-family:\s*var\(--font-body\);[\s\S]*?font-variant-numeric:\s*tabular-nums;/, '.kpi-value must use consistent body font family with tabular numerals');
+});
+
+test('Workspace navigation separates AI Credit Assistance (#chat-panel) and Credit Overview (#overview-panel) in exact 6-tab order', async () => {
+  const [html, js] = await Promise.all([
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'index.html'), 'utf8'),
+    fs.readFile(path.join(projectRoot, 'app', 'credit', 'js', 'main.js'), 'utf8')
+  ]);
+
+  const tabMatches = [...html.matchAll(/<button[^>]*class="tab[^"]*"[^>]*data-tab="([^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual(
+    tabMatches,
+    ['chat', 'overview', 'dashboard', 'analysis', 'approvals', 'simulator'],
+    'Sidebar navigation must follow the exact 6-tab order: chat, overview, dashboard, analysis, approvals, simulator'
+  );
+
+  const chatStart = html.indexOf('<section id="chat-panel"');
+  const overviewStart = html.indexOf('<section id="overview-panel"');
+  const dashboardStart = html.indexOf('<section id="dashboard-panel"');
+  assert.ok(chatStart !== -1 && overviewStart > chatStart && dashboardStart > overviewStart, '#overview-panel must follow #chat-panel before #dashboard-panel');
+
+  const chatContent = html.slice(chatStart, overviewStart);
+  const overviewContent = html.slice(overviewStart, dashboardStart);
+
+  assert.doesNotMatch(chatContent, /id="kpis"/, '#chat-panel must be a dedicated AI workspace without #kpis');
+  assert.match(chatContent, /id="sec-chat-control"/, '#chat-panel must retain AI Credit Control');
+  assert.match(chatContent, /id="sec-audit-memory"/, '#chat-panel must retain Audit & Memory');
+  assert.match(chatContent, /id="sec-enterprise-integration"/, '#chat-panel must retain Enterprise Integration');
+
+  assert.match(overviewContent, /id="kpis"/, '#overview-panel must contain #kpis');
+  assert.match(overviewContent, /id="overview-country-exposure"/, '#overview-panel must contain country-wise portfolio exposure summary');
+  assert.match(overviewContent, /id="overview-company-exposure"/, '#overview-panel must contain company-code portfolio exposure summary');
+  assert.match(overviewContent, /id="sec-overview-risk"/, '#overview-panel must contain credit risk & monitoring overview section');
+
+  assert.match(js, /function openAiCreditAssistanceWorkspace[\s\S]*?switchTab\('chat'\)/, 'Quick AI Ask helper must navigate directly to AI Credit Assistance (chat)');
+});
+
+
+
+

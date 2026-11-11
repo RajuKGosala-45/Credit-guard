@@ -3,12 +3,12 @@ import { escapeHTML, formatMoney, formatPercent } from '../utils.js';
 export function renderKpis(kpis) {
   const multiCurrency = Array.isArray(kpis.currencyTotals);
   const money = value => multiCurrency ? 'Multiple currencies' : formatMoney(value, kpis.currency);
-  
-  const cardStyles = [
-    { bg: '#f0f6ff', border: '#bfdbfe', numColor: '#1d4ed8' }, // Total exposure (Blue)
-    { bg: '#f0fdf4', border: '#bbf7d0', numColor: '#15803d' }, // Total credit limit (Green)
-    { bg: '#f5f3ff', border: '#ddd6fe', numColor: '#6d28d9' }, // Overall utilisation (Violet)
-    { bg: '#fff7ed', border: '#fed7aa', numColor: '#c2410c' }  // Overdue invoices (Orange/Red warning)
+
+  const cardThemes = [
+    'kpi-card--exposure',
+    'kpi-card--limit',
+    'kpi-card--utilisation',
+    'kpi-card--overdue'
   ];
 
   const values = [
@@ -27,14 +27,13 @@ export function renderKpis(kpis) {
 
   const kpiHost = document.querySelector('#kpis');
   if (kpiHost) {
-    kpiHost.style.cssText = 'display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem;';
     kpiHost.innerHTML = values.map(([label, value, note], idx) => {
-      const style = cardStyles[idx % cardStyles.length];
+      const themeClass = cardThemes[idx % cardThemes.length];
       return `
-        <article class="kpi-card" style="background: ${style.bg}; border: 1px solid ${style.border}; border-radius: 12px; padding: 1.25rem 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 0.4rem; transition: transform 0.2s ease, box-shadow 0.2s ease;">
-          <p class="kpi-label" style="font-size: 0.95rem; font-weight: 600; color: #334155; margin: 0; line-height: 1.3;">${escapeHTML(label)}</p>
-          <p class="kpi-value" style="font-size: 1.75rem; font-weight: 700; color: ${style.numColor}; margin: 0; line-height: 1.2;">${escapeHTML(value)}</p>
-          <p class="kpi-note" style="font-size: 0.8rem; font-weight: 400; color: #64748b; margin: 0; line-height: 1.3;">${escapeHTML(note)}</p>
+        <article class="kpi-card ${themeClass}">
+          <p class="kpi-label">${escapeHTML(label)}</p>
+          <p class="kpi-value">${escapeHTML(value)}</p>
+          <p class="kpi-note">${escapeHTML(note)}</p>
         </article>
       `;
     }).join('');

@@ -10,33 +10,106 @@
   padding: var(--space-4) var(--space-5);
 }
 
+#kpis {
+  align-items: stretch;
+}
+
 #kpis .kpi-card {
   display: flex;
-  min-height: 7.25rem;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 0.375rem;
+  height: 100%;
+  min-height: 6.5rem;
+  padding: 1.125rem 1.25rem;
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+#kpis .kpi-card--exposure {
+  background: #f4f8ff;
+  border-color: #dbeafe;
+}
+#kpis .kpi-card--exposure .kpi-value {
+  color: #1d4ed8;
+}
+
+#kpis .kpi-card--limit {
+  background: #f2fbf6;
+  border-color: #d1fae5;
+}
+#kpis .kpi-card--limit .kpi-value {
+  color: #15803d;
+}
+
+#kpis .kpi-card--utilisation {
+  background: #f7f5ff;
+  border-color: #e4ddfe;
+}
+#kpis .kpi-card--utilisation .kpi-value {
+  color: #6d28d9;
+}
+
+#kpis .kpi-card--overdue {
+  background: #fff9f2;
+  border-color: #fde2c4;
+}
+#kpis .kpi-card--overdue .kpi-value {
+  color: #c2410c;
 }
 
 .kpi-label {
-  margin-bottom: var(--space-2);
-  color: var(--color-muted);
-  font-size: var(--font-size-sm);
+  display: block;
+  margin: 0;
+  color: #334155;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
   font-weight: 500;
+  line-height: 1.35;
 }
 
 .kpi-value {
+  display: block;
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-lg);
-  font-weight: 700;
+  font-feature-settings: "tnum" 1;
+  font-size: clamp(1.5rem, 1.75vw, 1.875rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
   color: var(--color-ink);
+  white-space: nowrap;
 }
 
-.kpi-note {
-  margin: var(--space-2) 0 0;
-  color: var(--color-muted);
-  font-size: var(--font-size-xs);
+.kpi-note, .kpi-subtext {
+  display: block;
+  margin: 0;
+  color: #64748b;
+  font-family: var(--font-body);
+  font-size: 0.78125rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+@media (max-width: 1400px) {
+  #kpis .kpi-card {
+    padding: 1rem 1.125rem;
+    min-height: 6.125rem;
+  }
+
+  #kpis .kpi-label {
+    font-size: 0.9375rem;
+  }
+
+  #kpis .kpi-value {
+    font-size: clamp(1.5rem, 1.9vw, 1.75rem);
+  }
+
+  #kpis .kpi-note {
+    font-size: 0.78125rem;
+  }
 }
 
 .card {
@@ -571,6 +644,13 @@ tbody tr.customer-row:hover {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-canvas);
+}
+
+@media (max-height: 820px) {
+  .chat-messages {
+    min-height: 9.25rem;
+    margin: var(--space-3) 0;
+  }
 }
 
 .chat-message {
