@@ -56,12 +56,36 @@ The generator (`scripts/generate-sap-sim-data.js`) outputs 6 CSV files under `db
 
 ## 3. How to Generate, Extract, and Run Monitoring (`SYNTHETIC - NOT REAL SAP DATA`)
 
-### Running the Demo on a Later Date
-Because `srv/rules.js` (`classifyCustomer`, `calculateOverdueAmount`, `isStaleReview`) evaluates invoice due dates (`dueDate < now`) and credit review dates (`lastReviewDate < now - 1 year`) against the live clock (`new Date()`), and `srv/integrations/mock-sap-generated/connector.js` defaults its business date to the current UTC date (`new Date().toISOString().slice(0, 10)`), you should:
-1. Generate the synthetic dataset (`SYNTHETIC - NOT REAL SAP DATA`) using the normal generation command below (which defaults `--today` to the current UTC date `YYYY-MM-DD` and writes `expected-results.json` + `SYNTHETIC_NOTICE.txt` into gitignored `tmp/sap-sim/` so **no tracked file is touched**), **or**
-2. Set `CREDIT_GUARD_SAP_SIM_AS_OF_DATE=<YYYY-MM-DD>` if you want the connector's overdue status tagging during extraction to pin to a specific reference date. Note that the committed fixture `tests/fixtures/sap-sim/expected-results.json` is pinned to `--today 2026-11-10` (`seed=42, customers=300`) and is used only by tests that pin `2026-11-10`.
+### Date Behavior & Fixed Arguments (`POST /api/mock-sap-generated/load`)
+- **Connector & Generator Default Date**: Both `defaultSimClock()` in `srv/integrations/mock-sap-generated/connector.js` and `generateDataset()` / `parseCliArgs()` in `scripts/generate-sap-sim-data.js` default to the **current UTC date** (`new Date().toISOString().slice(0, 10)`). Setting `CREDIT_GUARD_SAP_SIM_AS_OF_DATE=<YYYY-MM-DD>` overrides `defaultSimClock()`.
+- **One-Step Atomic Load (`POST /api/mock-sap-generated/load`)**:
+  - Protected by `requireRole('CreditAdmin')` and `isSapSimEnabled()`.
+  - Rejects any query string or request body options (`400 Bad Request`), matching `POST /api/mock-sap-generated/extract`.
+  - Runs with **fixed arguments only**: `seed = 42`, `customers = 300`, `today = defaultSimClock().toISOString().slice(0, 10)`, staged atomically into `db/sap-sim/.stage-<uuid>` and moved into `db/sap-sim/data/` (both gitignored).
+  - Protected by an in-process mutex so concurrent load calls return `409 Conflict`.
+  - Lazily requires `scripts/generate-sap-sim-data.js` after the gate check; if `scripts/` is absent (such as in a stripped package), returns `503 Service Unavailable` without crashing server startup.
+  - Executes the `MOCK-SAP-GEN-001` ingestion (projecting 299 customers, 709 open items, 1,010 payments, and 1,010 `CG_PAYMENT_HISTORY` rows atomically once inside `completeIngestionRun`'s transaction) and then triggers one portfolio monitoring run (`executeMonitoringRun` with `runKind: 'MANUAL'`, `source: 'local'`).
+- **Environment Flags & Restarting / Reloading in AI Studio**:
+  - `CREDIT_GUARD_SAP_SIM=true`: Enables the `MOCK_SAP_GENERATED` source and `/api/mock-sap-generated*` routes when `NODE_ENV=production` or `CDS_ENV=production` (in local development they are enabled by default).
+  - `CREDIT_GUARD_SAP_SIM_AUTOLOAD=true`: When `isSapSimEnabled()` is true and `CREDIT_GUARD_SAP_SIM_AUTOLOAD=true` is set, the `cds.on('listening')` startup hook in `srv/server.js` automatically runs `loadGeneratedSapPortfolio` using the synthetic identity `new cds.User({ id: 'sap-sim-autoload', roles: ['CreditAdmin', 'CreditReader'] })`, logging any failure without crashing the server.
+  - **How to Restart & Reload in AI Studio**: Because the default development database is in-memory SQLite (`:memory:`), restarting the dev server resets `credit.Customers` to the 13 baseline demo customers (`C001`..`C013`). To reload the 299 generated customers (`312` total) after a restart, either:
+    1. Set `CREDIT_GUARD_SAP_SIM=true` and `CREDIT_GUARD_SAP_SIM_AUTOLOAD=true` in the environment before starting the server so the 312-customer portfolio loads automatically on boot, **or**
+    2. Call `POST /api/mock-sap-generated/load` with an empty JSON body (`{}`) as `administrator` (`CreditAdmin`).
 
-### A. Normal Generation & Demo Workflow (Touches No Tracked Files)
+### A. One-Step Atomic Load Workflow (Recommended — Touches No Tracked Files)
+
+```bash
+# 1. Start the CAP server (optionally with CREDIT_GUARD_SAP_SIM_AUTOLOAD=true for automatic startup load)
+CREDIT_GUARD_SAP_SIM=true npm run dev
+
+# 2. Trigger atomic generation + extraction + projection + monitoring in one call (CreditAdmin role)
+curl -s -u administrator:test -X POST \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  http://localhost:3000/api/mock-sap-generated/load | jq .
+```
+
+### B. Two-Step CLI Generation & Extraction Workflow (Touches No Tracked Files)
 
 #### Bash / macOS / Linux
 
@@ -104,31 +128,19 @@ node scripts/generate-sap-sim-data.js --seed=42 --customers=300 --today=$todayUt
 $env:CREDIT_GUARD_SAP_SIM_AS_OF_DATE = $todayUtc
 npm.cmd run dev
 
-# 3. Inspect synthetic source status (in a second PowerShell terminal)
-$readerAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("reader:test"))
-Invoke-RestMethod -Uri "http://localhost:3000/api/mock-sap-generated" `
-  -Method Get `
-  -Headers @{ Authorization = "Basic $readerAuth" } | ConvertTo-Json -Depth 6
-
-# 4. Trigger extraction & projection (CreditAdmin role)
+# 3. Or run one-step generate + extract + monitor via POST /api/mock-sap-generated/load
 $adminAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("administrator:test"))
-Invoke-RestMethod -Uri "http://localhost:3000/api/mock-sap-generated/extract" `
+Invoke-RestMethod -Uri "http://localhost:3000/api/mock-sap-generated/load" `
   -Method Post `
   -Headers @{ Authorization = "Basic $adminAuth"; "Content-Type" = "application/json" } `
   -Body "{}" | ConvertTo-Json -Depth 6
 
-# 5. Trigger portfolio monitoring run
-Invoke-RestMethod -Uri "http://localhost:3000/api/monitoring/runs" `
-  -Method Post `
-  -Headers @{ Authorization = "Basic $adminAuth"; "Content-Type" = "application/json" } `
-  -Body "{}" | ConvertTo-Json -Depth 6
-
-# 6. Run full test suite and Cloud Foundry build
+# 4. Run full test suite and Cloud Foundry build
 npm.cmd test
 npm.cmd run build:cf
 ```
 
-### B. Explicit Command to Regenerate the Committed Baseline Fixture (`2026-11-10`)
+### C. Explicit Command to Regenerate the Committed Baseline Fixture (`2026-11-10`)
 
 > **Warning**: The command below writes directly to the tracked files `tests/fixtures/sap-sim/expected-results.json` and `tests/fixtures/sap-sim/SYNTHETIC_NOTICE.txt`. Because the generator is deterministic for `--seed 42 --customers 300 --today 2026-11-10`, running this command will modify tracked files in `git status` **only if the generator logic or `srv/rules.js` changed** (or if line endings differ). Do not run this command for normal daily demos.
 
@@ -155,13 +167,14 @@ node scripts/generate-sap-sim-data.js --seed 42 --customers 300 --today 2026-11-
 8. **Provenance**: Every canonical record preserves `sourceId`, `sourceEntity`, `sourceRecordId`, `retrievedAt`, `ingestionRunId`, and `mappingVersion`.
 
 ### Key Limitations & Open Business Assumptions
-- **v2 Canonical `CG_BUSINESS_PARTNER` Scope vs. `CG_PAYMENT_HISTORY`**: Generated customers (`SYNTHETIC - NOT REAL SAP DATA`, 10-digit `PARTNER` IDs `0001000001`..`0001000300`) are projected into `credit.Customers` (`db/schema.cds`), **not** into `credit.CG_BUSINESS_PARTNER`. Consequently, v2 exposure snapshots (`credit.CG_EXPOSURE_SNAPSHOT` / `recalculateAllExposureSnapshots` in `srv/exposureCalculator.js`), the autonomous decision engine (`srv/autonomousDecisionEngine.js`), canonical agent tools (`srv/canonicalAgentTools.js`), and the customer 360 dossier (`GET /api/v2/exposure/partners/:bpId` in `srv/server.js:621` / `getBusinessPartnerCreditDossier` in `srv/canonicalRepository.js`) do not cover generated customers (they operate only over `credit.CG_BUSINESS_PARTNER` `C001`..`C013`), while `credit.CG_PAYMENT_HISTORY` contains the 1,010 cleared payment rows for those generated `PARTNER` IDs.
-- **Exact Canonical vs. Projected Row Counts**: A full extraction (`POST /api/mock-sap-generated/extract`) validates **2,322** canonical records across 5 entities (`CUSTOMER = 300`, `CREDIT_ACCOUNT = 300`, `INVOICE = 533`, `SALES_ORDER = 179`, `PAYMENT = 1,010`), deduplicating 1 identical duplicate `BSID` row (`DUPLICATE_SOURCE_IDENTITY`) so **2,321** active canonical rows are promoted to `credit.CanonicalRecords`. During operational projection (`srv/integrations/mock-sap-generated/projection.js`), 1 mixed-currency customer (`0001000009`, with 1 `CUSTOMER`, 1 `CREDIT_ACCOUNT`, and 2 `INVOICE` canonical records in `INR` and `USD`) is quarantined (`0` rows projected for `0001000009`), leaving **299** projected rows in `credit.Customers`, **709** projected rows in `credit.OpenItems` (**530** `Invoice` + **179** `SalesOrder`), **1,010** projected rows in `credit.Payments`, and **1,010** projected rows in `credit.CG_PAYMENT_HISTORY`.
+- **`decisionEligible: false` vs. `snapshotPromoted: true`**: In `srv/ingestionService.js:591-592`, `promoteSnapshot = !hasErrors && complete` (`true`) while `decisionEligible = promoteSnapshot && fresh && !hasWarnings` (`false`). Because the `MOCK-SAP-GEN-001` synthetic dataset intentionally includes 4 warning-level quality scenarios (`QUARANTINED_MIXED_CURRENCY` for `0001000009`, `EXCLUDED_UNMODELED_CREDIT_MEMO` for `100015`, `EXCLUDED_UNMODELED_PAYMENT_ON_ACCOUNT` for `100016`, and `DUPLICATE_SOURCE_IDENTITY` for `100017`), `hasWarnings` is always `true`, resulting in run status `SUCCEEDED_WITH_WARNINGS`, `snapshotPromoted: true` (all 299 valid customers active in the portfolio), and `decisionEligible: false`.
+- **13-Customer Limitation of Autonomous Scan & v2 Canonical Tools (`credit.CG_BUSINESS_PARTNER`)**: Generated customers (`SYNTHETIC - NOT REAL SAP DATA`, 10-digit `PARTNER` IDs `0001000001`..`0001000300`) are projected into `credit.Customers` (`db/schema.cds`), **not** into `credit.CG_BUSINESS_PARTNER`. Consequently, the autonomous scan (`srv/autonomousScheduler.js` / `srv/autonomousDecisionEngine.js`), v2 canonical agent tools (`srv/canonicalAgentTools.js`), v2 exposure snapshots (`credit.CG_EXPOSURE_SNAPSHOT` / `recalculateAllExposureSnapshots` in `srv/exposureCalculator.js`), and the customer 360 dossier (`GET /api/v2/exposure/partners/:bpId` / `getBusinessPartnerCreditDossier` in `srv/canonicalRepository.js`) cover **only the 13 demo customers (`C001`..`C013`)**, while `credit.CG_PAYMENT_HISTORY` also stores the 1,010 cleared payment rows for the generated `PARTNER` IDs.
+- **Exact Canonical vs. Projected Row Counts**: A full extraction (`POST /api/mock-sap-generated/extract` or `POST /api/mock-sap-generated/load`) validates **2,322** canonical records across 5 entities (`CUSTOMER = 300`, `CREDIT_ACCOUNT = 300`, `INVOICE = 533`, `SALES_ORDER = 179`, `PAYMENT = 1,010`), deduplicating 1 identical duplicate `BSID` row (`DUPLICATE_SOURCE_IDENTITY`) so **2,321** active canonical rows are promoted to `credit.CanonicalRecords`. During operational projection (`srv/integrations/mock-sap-generated/projection.js`), 1 mixed-currency customer (`0001000009`, with 1 `CUSTOMER`, 1 `CREDIT_ACCOUNT`, and 2 `INVOICE` canonical records in `INR` and `USD`) is quarantined (`0` rows projected for `0001000009`), leaving **299** projected rows in `credit.Customers`, **709** projected rows in `credit.OpenItems` (**530** `Invoice` + **179** `SalesOrder`), **1,010** projected rows in `credit.Payments`, and **1,010** projected rows in `credit.CG_PAYMENT_HISTORY`.
 - **Exposure Scope**: Total exposure equals unpaid open invoices (`BSID` `RV`/`S` — *Verify in SE11/SE16N for the target SAP release.*) plus open sales orders (`VBAK` — *Verify in SE11/SE16N for the target SAP release.*). `UKM_ITEM` (*Verify in SE11/SE16N for the target SAP release.*) open deliveries and billing document categories are not generated or used.
 - **Blocked Customers (`XBLOCKED = 'X'`)**: Blocked accounts (`0001000005` in `UKMBP_CMS_SGM` — *Verify in SE11/SE16N for the target SAP release.*) are ingested into `credit.Customers`, but `credit.Customers` and `srv/rules.js` do not model a credit block column or flag; `0001000005` is evaluated purely on utilization/overdue/review date (`HEALTHY`).
 - **Payment History Scope**: Payment history is populated exclusively from `BSAD` (*Verify in SE11/SE16N for the target SAP release.*) cleared `DZ` rows (all 1,010 rows in `BSAD.csv` have `BLART = 'DZ'`).
-- **Shared Portfolio Table (`13 + 299 = 312`)**: The 13 baseline local demo customers (`C001`..`C013`) and the 299 projected generated customers (`0001000001`..`0001000300`, excluding quarantined `0001000009`) coexist in `credit.Customers`. Portfolio queries (`GET /api/customers` and `GET /api/customers/:id` in `srv/server.js:1183, 1194`) and monitoring runs (`POST /api/monitoring/runs` in `srv/server.js:1024`) over `source: 'local'` evaluate all 312 customers together. Re-extraction replaces only rows belonging to generated customers and never alters the 13 demo customers.
-- **Production Gate (`CREDIT_GUARD_SAP_SIM`)**: When `NODE_ENV=production` or `CDS_ENV=production`, `MOCK_SAP_GENERATED` is disabled by default (not registered in `srv/configuredConnectors.js`, and `GET /api/mock-sap-generated` and `POST /api/mock-sap-generated/extract` in `srv/server.js:330, 361` return `403 Forbidden`) unless `CREDIT_GUARD_SAP_SIM=true` is explicitly set.
+- **Shared Portfolio Table (`13 + 299 = 312`)**: The 13 baseline local demo customers (`C001`..`C013`) and the 299 projected generated customers (`0001000001`..`0001000300`, excluding quarantined `0001000009`) coexist in `credit.Customers`. Portfolio queries (`GET /api/customers` and `GET /api/customers/:id`) and monitoring runs (`POST /api/monitoring/runs` or automatic monitoring during `POST /api/mock-sap-generated/load`) over `source: 'local'` evaluate all 312 customers together. Re-extraction replaces only rows belonging to generated customers and never alters the 13 demo customers.
+- **Production Gate (`CREDIT_GUARD_SAP_SIM`)**: When `NODE_ENV=production` or `CDS_ENV=production`, `MOCK_SAP_GENERATED` is disabled by default (not registered in `srv/configuredConnectors.js`, and `GET /api/mock-sap-generated`, `POST /api/mock-sap-generated/extract`, and `POST /api/mock-sap-generated/load` return `403 Forbidden`) unless `CREDIT_GUARD_SAP_SIM=true` is explicitly set.
 - **Open Business Assumptions (Verify with Business / SAP Team — Verify in SE11/SE16N for the target SAP release.)**:
   1. Treating `UKMBP_CMS_SGM.FOLLOW_UP_DT` (*Verify in SE11/SE16N for the target SAP release.*) as `lastReviewDate` (in standard FSCM it often represents the next follow-up date rather than the prior review date).
   2. Using `VBAK.NETWR` (*Verify in SE11/SE16N for the target SAP release.*) header net value directly as open sales order credit exposure (`type: 'SalesOrder'`).

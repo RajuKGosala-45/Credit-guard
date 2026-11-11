@@ -485,6 +485,7 @@ module.exports = {
   SUPPORTED_ENTITIES,
   addDaysToIso,
   createMockSapGeneratedConnector,
+  defaultSimClock,
   getMockSapGeneratedSourceConfiguration,
   getMockSapGeneratedSourceDefinition,
   getTrustedDataDirectory,

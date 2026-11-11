@@ -626,8 +626,10 @@ test('Gemini recommendations cannot turn into a proposal without explicit user i
 test('offline mode records why provider fallback was used', async () => {
   const originalProvider = process.env.LLM_PROVIDER;
   const originalKey = process.env.ANTHROPIC_API_KEY;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
   delete process.env.LLM_PROVIDER;
   delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.GEMINI_API_KEY;
 
   try {
     const result = await chat('Explain C001', mockDatabase(), undefined, reader);
@@ -641,5 +643,7 @@ test('offline mode records why provider fallback was used', async () => {
     else process.env.LLM_PROVIDER = originalProvider;
     if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = originalKey;
+    if (originalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalGeminiKey;
   }
 });

@@ -118,10 +118,11 @@ const COMPANY_SUFFIXES = [
   'Services', 'Components', 'Holdings', 'Solutions', 'International'
 ];
 
-function generateDataset(options) {
-  const prng = createPrng(options.seed);
+function generateDataset(options = {}) {
+  const seed = options.seed !== undefined ? options.seed : 42;
+  const prng = createPrng(seed);
   const customerCount = Math.max(options.customers || 300, 14);
-  const todayIso = options.today;
+  const todayIso = options.today || new Date().toISOString().slice(0, 10);
   const todaySap = formatSapDate(todayIso);
   const todayDate = new Date(`${todayIso}T00:00:00.000Z`);
 
@@ -728,7 +729,7 @@ function generateDataset(options) {
     label: 'SYNTHETIC - NOT REAL SAP DATA',
     metadata: {
       generatedAt: `${todayIso}T00:00:00.000Z`,
-      seed: options.seed,
+      seed,
       customerCount,
       asOfDate: todayIso,
       rulesVersion: 'srv/rules.js',

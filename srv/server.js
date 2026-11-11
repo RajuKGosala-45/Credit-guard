@@ -70,6 +70,7 @@ const {
   getMockSapGeneratedSourceDefinition,
   isSapSimEnabled
 } = require('./integrations/mock-sap-generated/connector');
+const { loadGeneratedSapPortfolio } = require('./integrations/mock-sap-generated/loader');
 const {
   ensureMockSapSource,
   ensureMockSapGeneratedSource,
@@ -397,6 +398,39 @@ cds.on('bootstrap', app => {
         label: 'SYNTHETIC - NOT REAL SAP DATA',
         error: status < 500 ? error.message : 'Mock SAP Generated extraction could not be completed safely.',
         ...(error.runId ? { runId: error.runId, errorCategory: error.category } : {})
+      });
+    }
+  });
+
+  app.post('/api/mock-sap-generated/load', requireRole('CreditAdmin'), async (req, res) => {
+    try {
+      if (!isSapSimEnabled()) {
+        return res.status(403).json({
+          label: 'SYNTHETIC - NOT REAL SAP DATA',
+          error: 'MOCK_SAP_GENERATED source is disabled in production environments by default.'
+        });
+      }
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+        || Object.keys(req.body).length > 0
+        || (req.query && Object.keys(req.query).length > 0)) {
+        return res.status(400).json({
+          label: 'SYNTHETIC - NOT REAL SAP DATA',
+          error: 'Mock SAP Generated load does not accept request options.'
+        });
+      }
+      const result = await loadGeneratedSapPortfolio({
+        db: cds.db,
+        user: currentUser(req),
+        runMonitoring: true
+      });
+      return res.status(200).json(result);
+    } catch (error) {
+      const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
+      return res.status(status).json({
+        label: 'SYNTHETIC - NOT REAL SAP DATA',
+        error: status < 503 || status === 503 ? error.message : 'Mock SAP Generated load could not be completed safely.',
+        ...(error.runId ? { runId: error.runId, errorCategory: error.category } : {}),
+        ...(error.category && !error.runId ? { errorCategory: error.category } : {})
       });
     }
   });
@@ -1567,6 +1601,16 @@ cds.on('listening', () => {
   stopMonitoringWorker = startMonitoringWorker(cds.db);
   if (process.env.DISABLE_AUTONOMOUS_SCHEDULER !== 'true') {
     stopAutonomousScheduler = startAutonomousScheduler(cds.db);
+  }
+  if (isSapSimEnabled() && process.env.CREDIT_GUARD_SAP_SIM_AUTOLOAD === 'true') {
+    const autoloadUser = new cds.User({ id: 'sap-sim-autoload', roles: ['CreditAdmin', 'CreditReader'] });
+    loadGeneratedSapPortfolio({
+      db: cds.db,
+      user: autoloadUser,
+      runMonitoring: true
+    }).catch(error => {
+      cds.log('sap-sim-autoload').warn('Automatic synthetic SAP portfolio load failed:', error?.message || error);
+    });
   }
 });
 cds.on('shutdown', async () => {
