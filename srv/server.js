@@ -67,7 +67,12 @@ const {
 const mockSapFixture = require('./integrations/mock-sap/fixtures.json');
 const { getMockSapSourceDefinition } = require('./integrations/mock-sap/connector');
 const {
+  getMockSapGeneratedSourceDefinition,
+  isSapSimEnabled
+} = require('./integrations/mock-sap-generated/connector');
+const {
   ensureMockSapSource,
+  ensureMockSapGeneratedSource,
   getSource,
   listSources,
   registerSource,
@@ -317,6 +322,80 @@ cds.on('bootstrap', app => {
       const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
       return res.status(status).json({
         error: status < 500 ? error.message : 'Mock SAP extraction could not be completed safely.',
+        ...(error.runId ? { runId: error.runId, errorCategory: error.category } : {})
+      });
+    }
+  });
+
+  app.get('/api/mock-sap-generated', requireRole('CreditReader'), async (_req, res) => {
+    try {
+      if (!isSapSimEnabled()) {
+        return res.status(403).json({
+          label: 'SYNTHETIC - NOT REAL SAP DATA',
+          error: 'MOCK_SAP_GENERATED source is disabled in production environments by default.'
+        });
+      }
+      const definition = getMockSapGeneratedSourceDefinition();
+      const source = await getSource(cds.db, definition.sourceId);
+      const latestRun = source ? await getLatestIngestionRun(cds.db, source.sourceId) : null;
+      const issueRows = latestRun ? await listIngestionIssues(cds.db, latestRun.ID) : [];
+      return res.json({
+        label: 'SYNTHETIC - NOT REAL SAP DATA',
+        registered: Boolean(source),
+        portfolioSource: getConfiguredDataSource(),
+        source: source || definition,
+        supportedEntities: definition.supportedEntities,
+        latestRun: latestRun
+          ? publicIngestionRun(latestRun, issueRows.slice(0, 500), false, issueRows.length > 500)
+          : null
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 500)
+        .json({
+          label: 'SYNTHETIC - NOT REAL SAP DATA',
+          error: error.statusCode ? error.message : 'Mock SAP Generated simulator data is unavailable.'
+        });
+    }
+  });
+
+  app.post('/api/mock-sap-generated/extract', requireRole('CreditAdmin'), async (req, res) => {
+    try {
+      if (!isSapSimEnabled()) {
+        return res.status(403).json({
+          label: 'SYNTHETIC - NOT REAL SAP DATA',
+          error: 'MOCK_SAP_GENERATED source is disabled in production environments by default.'
+        });
+      }
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+        || Object.keys(req.body).length) {
+        return res.status(400).json({
+          label: 'SYNTHETIC - NOT REAL SAP DATA',
+          error: 'Mock SAP Generated extraction does not accept request options.'
+        });
+      }
+      const source = await ensureMockSapGeneratedSource(cds.db);
+      const ingestionRuntime = createConfiguredIngestionRuntime({ db: cds.db });
+      const result = await ingestionRuntime.run({
+        user: currentUser(req),
+        sourceId: source.sourceId,
+        entityTypes: source.supportedEntities
+      });
+      const issueRows = await listIngestionIssues(cds.db, result.run.ID);
+      return res.status(200).json({
+        label: 'SYNTHETIC - NOT REAL SAP DATA',
+        sourceName: source.sourceName,
+        ...publicIngestionRun(
+          result.run,
+          issueRows.slice(0, 500),
+          result.duplicate,
+          issueRows.length > 500
+        )
+      });
+    } catch (error) {
+      const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
+      return res.status(status).json({
+        label: 'SYNTHETIC - NOT REAL SAP DATA',
+        error: status < 500 ? error.message : 'Mock SAP Generated extraction could not be completed safely.',
         ...(error.runId ? { runId: error.runId, errorCategory: error.category } : {})
       });
     }

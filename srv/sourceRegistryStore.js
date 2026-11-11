@@ -2,6 +2,10 @@ const cds = require('@sap/cds');
 const { SELECT, INSERT, UPDATE } = cds.ql;
 const { MOCK_SAP_SOURCE_ID, validateSourceDefinition } = require('./sourceRegistry');
 const { getMockSapSourceDefinition } = require('./integrations/mock-sap/connector');
+const {
+  getMockSapGeneratedSourceDefinition,
+  SOURCE_ID: MOCK_SAP_GENERATED_SOURCE_ID
+} = require('./integrations/mock-sap-generated/connector');
 
 function fromRow(row) {
   let supportedEntities;
@@ -128,9 +132,19 @@ function selectEnabledSource(source) {
   return source;
 }
 
+async function ensureMockSapGeneratedSource(db, now = new Date()) {
+  const definition = getMockSapGeneratedSourceDefinition();
+  const existing = await getSource(db, MOCK_SAP_GENERATED_SOURCE_ID);
+  if (existing) {
+    return existing;
+  }
+  return registerSource(db, definition, now);
+}
+
 module.exports = {
   getSource,
   ensureMockSapSource,
+  ensureMockSapGeneratedSource,
   listSources,
   registerSource,
   selectEnabledSource,

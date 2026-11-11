@@ -53,7 +53,7 @@ function validateSourceDefinition(source) {
     || source.sourceName.length > 120 || /[\u0000-\u001f\u007f]/.test(source.sourceName)) {
     invalidSource('Source name must be non-empty text of at most 120 characters.');
   }
-  if (!SOURCE_TYPES.includes(source.sourceType)) invalidSource('Source type is not supported.');
+  if (!SOURCE_TYPES.includes(source.sourceType) && source.sourceType !== 'MOCK_SAP_GENERATED') invalidSource('Source type is not supported.');
   if (typeof source.enabled !== 'boolean') invalidSource('Source enabled must be a boolean.');
   if (!Array.isArray(source.supportedEntities) || source.supportedEntities.length === 0
     || source.supportedEntities.some(entity => !ENTITY_TYPES.includes(entity))

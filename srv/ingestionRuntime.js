@@ -13,6 +13,11 @@ const {
   getMockSapSourceConfiguration,
   getMockSapSourceDefinition
 } = require('./integrations/mock-sap/connector');
+const {
+  CONFIGURATION_REFERENCE: MOCK_SAP_GENERATED_CONFIGURATION_REFERENCE,
+  getMockSapGeneratedSourceConfiguration,
+  getMockSapGeneratedSourceDefinition
+} = require('./integrations/mock-sap-generated/connector');
 const { ingestSource, latestCanonicalSnapshot } = require('./ingestionService');
 
 function createIngestionRuntime({ db, configurationResolver, adapters = [] } = {}) {
@@ -181,6 +186,13 @@ function createConfiguredIngestionRuntime({
         throw configurationUnavailable();
       }
       return getMockSapSourceConfiguration();
+    }
+    if (source.sourceId === getMockSapGeneratedSourceDefinition().sourceId) {
+      if (source.sourceType !== 'MOCK_SAP_GENERATED'
+        || source.configurationReference !== MOCK_SAP_GENERATED_CONFIGURATION_REFERENCE) {
+        throw configurationUnavailable();
+      }
+      return getMockSapGeneratedSourceConfiguration();
     }
     const config = sourceConfigurations[source.configurationReference];
     if (!isRecord(config)) throw configurationUnavailable();

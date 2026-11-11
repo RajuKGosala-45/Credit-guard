@@ -2,6 +2,7 @@ const cds = require('@sap/cds');
 const { ENTITY_TYPES } = require('./canonicalData');
 const { ConnectorError, createAbapODataConnector } = require('./connectorManager');
 const { createMockSapConnector } = require('./integrations/mock-sap/connector');
+const { createMockSapGeneratedConnector, isSapSimEnabled } = require('./integrations/mock-sap-generated/connector');
 
 const DEFAULT_PAGE_SIZE = 250;
 const MAX_PAGE_SIZE = 1000;
@@ -801,6 +802,12 @@ function createConfiguredConnectors(options = {}) {
     sourceType: 'MOCK_SAP_SIMULATOR',
     connector: createMockSapConnector(options.mockSap)
   });
+  if (isSapSimEnabled()) {
+    adapters.push({
+      sourceType: 'MOCK_SAP_GENERATED',
+      connector: createMockSapGeneratedConnector(options.mockSapGenerated)
+    });
+  }
   return adapters;
 }
 

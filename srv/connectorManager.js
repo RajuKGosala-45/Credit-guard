@@ -68,7 +68,7 @@ function createConnectorManager({ configurationResolver, adapters = [] } = {}) {
   if (!Array.isArray(adapters)) throw new TypeError('Connector adapters must be an array.');
   const connectors = new Map();
   for (const { sourceType, connector } of adapters) {
-    if (!SOURCE_TYPES.includes(sourceType)) throw new TypeError('Connector source type is not supported.');
+    if (!SOURCE_TYPES.includes(sourceType) && sourceType !== 'MOCK_SAP_GENERATED') throw new TypeError('Connector source type is not supported.');
     if (connectors.has(sourceType)) throw new TypeError(`Connector already registered for ${sourceType}.`);
     connectors.set(sourceType, { connector, capabilities: validateConnector(connector) });
   }

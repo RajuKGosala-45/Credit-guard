@@ -161,12 +161,18 @@
 }
 
 .tab-panel {
-  display: none;
+  display: none !important;
 }
 
 .tab-panel.active {
-  display: block;
+  display: block !important;
   animation: fadeInTabPanel 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#simulator-panel.active {
+  display: flex !important;
+  flex-direction: column;
+  gap: 2.5rem;
 }
 
 .content-grid, .chat-workspace-grid {

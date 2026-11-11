@@ -127,7 +127,9 @@ function switchTab(tabName) {
   });
 
   document.querySelectorAll('.tab-panel').forEach(panel => {
-    panel.classList.toggle('active', panel.id === `${state.currentTab}-panel`);
+    const isActive = panel.id === `${state.currentTab}-panel`;
+    panel.classList.toggle('active', isActive);
+    panel.style.removeProperty('display');
   });
 
   if (state.currentTab === 'dashboard') {
