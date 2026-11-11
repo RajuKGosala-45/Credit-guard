@@ -3,6 +3,11 @@ const cds = require('@sap/cds');
 const { SELECT, INSERT, UPDATE } = cds.ql;
 const { MOCK_SAP_SOURCE_ID } = require('./sourceRegistry');
 const { projectMockSapRecords } = require('./integrations/mock-sap/projection');
+const {
+  SOURCE_ID: MOCK_SAP_GENERATED_SOURCE_ID,
+  isSapSimEnabled
+} = require('./integrations/mock-sap-generated/connector');
+const { projectMockSapGeneratedRecords } = require('./integrations/mock-sap-generated/projection');
 
 const SUCCESS_STATUSES = new Set(['SUCCEEDED', 'SUCCEEDED_WITH_WARNINGS']);
 const RUN_STATUSES = new Set([...SUCCESS_STATUSES, 'PARTIAL', 'FAILED']);
@@ -211,6 +216,9 @@ async function completeIngestionRun(db, runId, {
     if (shouldPromote) {
       if (run.sourceId === MOCK_SAP_SOURCE_ID) {
         rowCounts.mockProjection = await projectMockSapRecords(tx, records);
+      }
+      if (run.sourceId === MOCK_SAP_GENERATED_SOURCE_ID && isSapSimEnabled()) {
+        rowCounts.mockSapGeneratedProjection = await projectMockSapGeneratedRecords(tx, records);
       }
       for (const entityType of entityTypes) {
         await tx.run(UPDATE('credit.CanonicalRecords')

@@ -494,7 +494,7 @@ function generateDataset(options) {
       // BSID (open invoices)
       // Exactly matches UKM_ITEM: BELNR = docRawSeq => OBJKEY = 'INV-' + BELNR
       if (!isSo) {
-        BSID.push({
+        const bsidRow = {
           KUNNR: partner,
           BUKRS: bukrs,
           BELNR: docRawSeq,
@@ -510,7 +510,11 @@ function generateDataset(options) {
           ZTERM: 'NT30',
           ZBD1T: '30',
           REBZG: ''
-        });
+        };
+        BSID.push(bsidRow);
+        if (oi.duplicate) {
+          BSID.push({ ...bsidRow });
+        }
       } else {
         // VBAK (sales document header)
         // Exactly matches UKM_ITEM: VBELN = docRawSeq => OBJKEY = 'SO-' + VBELN
@@ -815,8 +819,14 @@ function writeDataset(options, dataset) {
     filesWritten.push({ file: targetFile, records: rows.length });
   }
 
-  // Write SYNTHETIC_NOTICE.txt strictly under outDir
-  const noticePath = path.join(outDir, 'SYNTHETIC_NOTICE.txt');
+  // Remove any legacy SYNTHETIC_NOTICE.txt from outDir so cds build never copies non-CSV files from db/ into gen/db/
+  const legacyNoticeInOutDir = path.join(outDir, 'SYNTHETIC_NOTICE.txt');
+  if (fs.existsSync(legacyNoticeInOutDir)) {
+    fs.unlinkSync(legacyNoticeInOutDir);
+  }
+
+  // Write SYNTHETIC_NOTICE.txt alongside expected-results.json outside db/
+  const noticePath = path.join(path.dirname(expectedJsonPath), 'SYNTHETIC_NOTICE.txt');
   fs.writeFileSync(noticePath, SYNTHETIC_NOTICE_TEXT, 'utf8');
   filesWritten.push({ file: noticePath, records: 'NOTICE' });
 

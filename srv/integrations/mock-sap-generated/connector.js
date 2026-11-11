@@ -239,7 +239,16 @@ function addDaysToIso(isoDateStr, days) {
   return date.toISOString().slice(0, 10);
 }
 
-function createMockSapGeneratedConnector({ now = () => new Date() } = {}) {
+function defaultSimClock() {
+  const envDate = process.env.CREDIT_GUARD_SAP_SIM_AS_OF_DATE;
+  if (typeof envDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(envDate.trim())) {
+    return new Date(`${envDate.trim()}T00:00:00.000Z`);
+  }
+  const todayUtcIso = new Date().toISOString().slice(0, 10);
+  return new Date(`${todayUtcIso}T00:00:00.000Z`);
+}
+
+function createMockSapGeneratedConnector({ now = defaultSimClock } = {}) {
   return {
     capabilities() {
       return {
@@ -304,14 +313,45 @@ function createMockSapGeneratedConnector({ now = () => new Date() } = {}) {
       if (entityType === 'CUSTOMER') {
         const but000Rows = readCsvTable(simDir, 'BUT000.csv');
         const ukmRows = readCsvTable(simDir, 'UKMBP_CMS_SGM.csv');
+        const bsidRows = readCsvTable(simDir, 'BSID.csv');
+        const vbakRows = readCsvTable(simDir, 'VBAK.csv');
+
         const followUpMap = new Map();
+        const currenciesByPartner = new Map();
         for (const row of ukmRows) {
           followUpMap.set(row.PARTNER, row.FOLLOW_UP_DT);
+          const set = new Set();
+          if (row.WAERS) set.add(row.WAERS);
+          currenciesByPartner.set(row.PARTNER, set);
+        }
+        for (const row of bsidRows) {
+          if (row.BLART === 'RV' && row.SHKZG === 'S' && row.WAERS) {
+            const set = currenciesByPartner.get(row.KUNNR);
+            if (set) set.add(row.WAERS);
+          }
+        }
+        for (const row of vbakRows) {
+          const curr = row.WAERS || row.WAERK;
+          if (curr) {
+            const set = currenciesByPartner.get(row.KUNNR);
+            if (set) set.add(curr);
+          }
         }
 
         records = but000Rows.map(row => {
           const followUpDt = followUpMap.get(row.PARTNER);
           const lastReviewDate = parseSapDateToIso(followUpDt);
+          const currencySet = currenciesByPartner.get(row.PARTNER);
+          if (currencySet && currencySet.size > 1) {
+            qualityIssues.push({
+              code: 'QUARANTINED_MIXED_CURRENCY',
+              severity: 'WARNING',
+              field: 'WAERS',
+              message: `Customer ${row.PARTNER} quarantined from portfolio projection: multiple currencies detected across credit-consuming items (${[...currencySet].join(', ')}).`,
+              sourceRecordId: row.PARTNER,
+              customerId: row.PARTNER
+            });
+          }
           return {
             PARTNER: row.PARTNER,
             BPEXT: row.BPEXT,
@@ -443,9 +483,13 @@ module.exports = {
   SOURCE_NAME,
   SOURCE_TYPE,
   SUPPORTED_ENTITIES,
+  addDaysToIso,
   createMockSapGeneratedConnector,
   getMockSapGeneratedSourceConfiguration,
   getMockSapGeneratedSourceDefinition,
+  getTrustedDataDirectory,
   isProduction,
-  isSapSimEnabled
+  isSapSimEnabled,
+  parseSapDateToIso,
+  readCsvTable
 };

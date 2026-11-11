@@ -425,6 +425,17 @@ async function ingestSource({
           break;
         }
 
+        if (Array.isArray(page.qualityIssues)) {
+          for (const connectorIssue of page.qualityIssues) {
+            const formattedIssue = issueFrom(connectorIssue, {
+              entityType,
+              sourceRecordId: connectorIssue?.sourceRecordId
+            });
+            issues.push(formattedIssue);
+            if (formattedIssue.severity === 'WARNING') hasWarnings = true;
+          }
+        }
+
         for (const sourceRecord of page.records) {
           const sourceRecordId = sourceRecordIdFrom(sourceRecord, page.sourceRecordIdField);
           if (!sourceRecordId) {

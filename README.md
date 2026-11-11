@@ -186,3 +186,8 @@ Next, provision and validate the external BTP Job Scheduler job, verify service-
 ## Documentation
 
 Current guides live in [`docs/`](docs/). Earlier milestone reports are retained as point-in-time records in [`docs/archive/reports/`](docs/archive/reports/); their findings may have been superseded by current code and guides.
+
+- [SAP Simulated Data (`SYNTHETIC - NOT REAL SAP DATA`)](docs/testing/SAP_SIM_DATA.md)
+- [SAP Credit Management Data Dictionary](docs/sap-integration/SAP_DATA_DICTIONARY.md)
+- [Canonical Mapping Matrix & Provenance Audit](docs/architecture/CANONICAL_MAPPING_MATRIX.md)
+

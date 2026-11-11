@@ -56,3 +56,5 @@ Thumbs.db
 /test-results.json
 /test-gemini.js
 /db/sap-sim/data/
+.playwright-cli/
+bun.lock
