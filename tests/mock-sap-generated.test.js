@@ -211,7 +211,9 @@ test('Mock SAP Generated extraction ingests 300 BP dataset, persists connector q
   assert.equal(afterCustomers.body.length, 312);
 
   // Verify all 300 generated customers match the runtime expected-results.json
-  const expected = JSON.parse(fs.readFileSync(runtimeExpectedPath, 'utf8'));
+  const expected = JSON.parse(
+    fs.readFileSync(runtimeExpectedPath, 'utf8').replace(/\r\n/g, '\n')
+  );
   for (const [partnerId, exp] of Object.entries(expected.allCustomers)) {
     const actual = afterCustomers.body.find(c => c.ID === partnerId);
     if (exp.expectedOutcome === 'REJECTED_MIXED_CURRENCY') {

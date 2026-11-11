@@ -15,7 +15,8 @@ The `MOCK_SAP_GENERATED` (`MOCK-SAP-GEN-001`) data source provides a determinist
 - **Source Type**: `MOCK_SAP_GENERATED`
 - **Configuration Reference**: `config:mock-sap-generated`
 - **Trusted Data Directory**: `db/sap-sim/data/` (gitignored; generated on demand)
-- **Expected Results & Notice**: `tests/fixtures/sap-sim/expected-results.json` and `tests/fixtures/sap-sim/SYNTHETIC_NOTICE.txt`
+- **Default Runtime Expected Results & Notice Output**: `tmp/sap-sim/expected-results.json` and `tmp/sap-sim/SYNTHETIC_NOTICE.txt` (gitignored; default when `--expected-out` is not passed)
+- **Committed Baseline Fixture & Notice**: `tests/fixtures/sap-sim/expected-results.json` and `tests/fixtures/sap-sim/SYNTHETIC_NOTICE.txt` (pinned to `seed=42, customers=300, today=2026-11-10`; only overwritten when `--expected-out tests/fixtures/sap-sim/expected-results.json` is explicitly passed)
 
 ---
 
@@ -57,13 +58,16 @@ The generator (`scripts/generate-sap-sim-data.js`) outputs 6 CSV files under `db
 
 ### Running the Demo on a Later Date
 Because `srv/rules.js` (`classifyCustomer`, `calculateOverdueAmount`, `isStaleReview`) evaluates invoice due dates (`dueDate < now`) and credit review dates (`lastReviewDate < now - 1 year`) against the live clock (`new Date()`), and `srv/integrations/mock-sap-generated/connector.js` defaults its business date to the current UTC date (`new Date().toISOString().slice(0, 10)`), you should:
-1. Generate the synthetic dataset (`SYNTHETIC - NOT REAL SAP DATA`) using the default `--today` (which defaults to the current UTC date `YYYY-MM-DD`) so relative invoice baseline dates (`ZFBDT`) and review dates (`FOLLOW_UP_DT`) align with the day you run the server, **or**
+1. Generate the synthetic dataset (`SYNTHETIC - NOT REAL SAP DATA`) using the normal generation command below (which defaults `--today` to the current UTC date `YYYY-MM-DD` and writes `expected-results.json` + `SYNTHETIC_NOTICE.txt` into gitignored `tmp/sap-sim/` so **no tracked file is touched**), **or**
 2. Set `CREDIT_GUARD_SAP_SIM_AS_OF_DATE=<YYYY-MM-DD>` if you want the connector's overdue status tagging during extraction to pin to a specific reference date. Note that the committed fixture `tests/fixtures/sap-sim/expected-results.json` is pinned to `--today 2026-11-10` (`seed=42, customers=300`) and is used only by tests that pin `2026-11-10`.
 
-### Bash / macOS / Linux
+### A. Normal Generation & Demo Workflow (Touches No Tracked Files)
+
+#### Bash / macOS / Linux
 
 ```bash
 # 1. Generate deterministic 300-BP dataset (seed=42, defaults --today to current UTC date)
+#    Writes CSVs to db/sap-sim/data/ and expected-results.json + SYNTHETIC_NOTICE.txt to tmp/sap-sim/ (both gitignored)
 node scripts/generate-sap-sim-data.js --seed=42 --customers=300 --out=db/sap-sim/data
 
 # 2. Start the CAP server in development mode
@@ -88,10 +92,11 @@ curl -s -u administrator:test -X POST \
 npm test
 ```
 
-### Windows PowerShell (using `npm.cmd`)
+#### Windows PowerShell (using `npm.cmd`)
 
 ```powershell
 # 1. Generate deterministic 300-BP dataset (seed=42) with current UTC date
+#    Writes CSVs to db/sap-sim/data/ and expected-results.json + SYNTHETIC_NOTICE.txt to tmp/sap-sim/ (touches no tracked file)
 $todayUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
 node scripts/generate-sap-sim-data.js --seed=42 --customers=300 --today=$todayUtc --out=db/sap-sim/data
 
@@ -121,6 +126,14 @@ Invoke-RestMethod -Uri "http://localhost:3000/api/monitoring/runs" `
 # 6. Run full test suite and Cloud Foundry build
 npm.cmd test
 npm.cmd run build:cf
+```
+
+### B. Explicit Command to Regenerate the Committed Baseline Fixture (`2026-11-10`)
+
+> **Warning**: The command below writes directly to the tracked files `tests/fixtures/sap-sim/expected-results.json` and `tests/fixtures/sap-sim/SYNTHETIC_NOTICE.txt`. Because the generator is deterministic for `--seed 42 --customers 300 --today 2026-11-10`, running this command will modify tracked files in `git status` **only if the generator logic or `srv/rules.js` changed** (or if line endings differ). Do not run this command for normal daily demos.
+
+```bash
+node scripts/generate-sap-sim-data.js --seed 42 --customers 300 --today 2026-11-10 --out db/sap-sim/data --expected-out tests/fixtures/sap-sim/expected-results.json
 ```
 
 ---

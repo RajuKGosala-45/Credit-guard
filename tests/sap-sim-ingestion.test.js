@@ -23,6 +23,10 @@ let runtimeTodayIso;
 let expectedResults;
 let tmpFixtureDir;
 
+function normalizeLf(text) {
+  return String(text).replace(/\r\n/g, '\n');
+}
+
 function ensureDatasetForCurrentUtcDate() {
   runtimeTodayIso = new Date().toISOString().slice(0, 10);
   const outDir = path.join('db', 'sap-sim', 'data');
@@ -37,7 +41,7 @@ function ensureDatasetForCurrentUtcDate() {
     expectedOut
   };
   writeDataset(options, generateDataset(options));
-  expectedResults = JSON.parse(fs.readFileSync(expectedOut, 'utf8'));
+  expectedResults = JSON.parse(normalizeLf(fs.readFileSync(expectedOut, 'utf8')));
 }
 
 test.before(async () => {

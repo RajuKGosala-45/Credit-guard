@@ -8,17 +8,17 @@
  * Table and field names are written from memory and standard FSCM/FI/SD schema references.
  * Verify in SE11/SE16N for the target SAP release.
  *
- * Emits CSV tables and notice under db/sap-sim/data:
+ * Emits CSV tables under db/sap-sim/data:
  *  - BUT000.csv         (Business Partner master)
  *  - UKMBP_CMS_SGM.csv  (FSCM Credit Management account & segment)
  *  - UKM_ITEM.csv       (FSCM Credit exposure items)
  *  - BSID.csv           (FI Customer open items: RV invoices, DG credit memos, DZ payments)
  *  - BSAD.csv           (FI Customer cleared items)
  *  - VBAK.csv           (SD Sales document header for open orders)
- *  - SYNTHETIC_NOTICE.txt
  *
- * Emits expected-results.json ONLY to tests/fixtures/sap-sim/expected-results.json (or --expected-out)
- * with independently computed exposure, overdue, and utilization per scenario according to srv/rules.js.
+ * Emits expected-results.json and SYNTHETIC_NOTICE.txt by default to tmp/sap-sim/ (gitignored),
+ * or to an explicit path when --expected-out <path> is provided, with independently computed
+ * exposure, overdue, and utilization per scenario according to srv/rules.js.
  */
 
 const fs = require('node:fs');
@@ -51,7 +51,7 @@ function parseCliArgs(argv) {
     seed: 42,
     customers: 300,
     out: path.join('db', 'sap-sim', 'data'),
-    expectedOut: path.join('tests', 'fixtures', 'sap-sim', 'expected-results.json'),
+    expectedOut: path.join('tmp', 'sap-sim', 'expected-results.json'),
     today: new Date().toISOString().slice(0, 10)
   };
 
@@ -803,7 +803,8 @@ Verify field semantics against your organization's FSCM configuration in SE11/SE
 `;
 
 function writeDataset(options, dataset) {
-  const { out: outDir, expectedOut: expectedJsonPath } = options;
+  const outDir = options.out || path.join('db', 'sap-sim', 'data');
+  const expectedJsonPath = options.expectedOut || path.join('tmp', 'sap-sim', 'expected-results.json');
 
   // Ensure output directories exist
   fs.mkdirSync(outDir, { recursive: true });
@@ -830,7 +831,7 @@ function writeDataset(options, dataset) {
   fs.writeFileSync(noticePath, SYNTHETIC_NOTICE_TEXT, 'utf8');
   filesWritten.push({ file: noticePath, records: 'NOTICE' });
 
-  // Write expected-results.json ONLY to expectedJsonPath (e.g. tests/fixtures/sap-sim/expected-results.json)
+  // Write expected-results.json ONLY to expectedJsonPath (default tmp/sap-sim/expected-results.json or explicit --expected-out)
   fs.writeFileSync(expectedJsonPath, JSON.stringify(dataset.expectedResults, null, 2) + '\n', 'utf8');
   filesWritten.push({
     file: expectedJsonPath,

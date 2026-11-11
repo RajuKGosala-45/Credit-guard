@@ -1,3 +1,5 @@
+const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -6,8 +8,17 @@ const assert = require('node:assert/strict');
 const {
   createPrng,
   generateDataset,
+  parseCliArgs,
   writeDataset
 } = require('../scripts/generate-sap-sim-data');
+
+function normalizeLf(text) {
+  return String(text).replace(/\r\n/g, '\n');
+}
+
+function sha256FileRaw(filePath) {
+  return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
 
 const EXPECTED_SCENARIO_KEYS = [
   'EXACTLY_80_PERCENT_UTILIZATION',
@@ -68,13 +79,13 @@ test('PRNG and generator determinism: identical seed and options produce byte-fo
     ]);
 
     for (const file of files1) {
-      const content1 = fs.readFileSync(path.join(opts1.out, file), 'utf8');
-      const content2 = fs.readFileSync(path.join(opts2.out, file), 'utf8');
+      const content1 = normalizeLf(fs.readFileSync(path.join(opts1.out, file), 'utf8'));
+      const content2 = normalizeLf(fs.readFileSync(path.join(opts2.out, file), 'utf8'));
       assert.equal(content1, content2, `CSV output mismatch for ${file}`);
     }
 
-    const exp1 = fs.readFileSync(opts1.expectedOut, 'utf8');
-    const exp2 = fs.readFileSync(opts2.expectedOut, 'utf8');
+    const exp1 = normalizeLf(fs.readFileSync(opts1.expectedOut, 'utf8'));
+    const exp2 = normalizeLf(fs.readFileSync(opts2.expectedOut, 'utf8'));
     assert.equal(exp1, exp2, 'expected-results.json output must be byte-for-byte identical');
   } finally {
     fs.rmSync(tmpRoot1, { recursive: true, force: true });
@@ -174,13 +185,13 @@ test('Scenario coverage and directory placement: all 14 scenarios exist, only CS
     assert.equal(fs.existsSync(committedExpectedPath), true);
     assert.equal(fs.existsSync(committedNoticePath), true);
 
-    const committedNoticeText = fs.readFileSync(committedNoticePath, 'utf8');
+    const committedNoticeText = normalizeLf(fs.readFileSync(committedNoticePath, 'utf8'));
     assert.match(committedNoticeText, /SYNTHETIC - NOT REAL SAP DATA/);
     assert.match(committedNoticeText, /Verify in SE11\/SE16N/i);
-    assert.equal(fs.readFileSync(tmpNoticeOut, 'utf8'), committedNoticeText);
+    assert.equal(normalizeLf(fs.readFileSync(tmpNoticeOut, 'utf8')), committedNoticeText);
 
-    const committedExpectedRaw = fs.readFileSync(committedExpectedPath, 'utf8');
-    const tmpExpectedRaw = fs.readFileSync(tmpExpectedOut, 'utf8');
+    const committedExpectedRaw = normalizeLf(fs.readFileSync(committedExpectedPath, 'utf8'));
+    const tmpExpectedRaw = normalizeLf(fs.readFileSync(tmpExpectedOut, 'utf8'));
     assert.equal(tmpExpectedRaw, committedExpectedRaw);
 
     const expected = JSON.parse(committedExpectedRaw);
@@ -194,3 +205,70 @@ test('Scenario coverage and directory placement: all 14 scenarios exist, only CS
     fs.rmSync(tmpFixtureDir, { recursive: true, force: true });
   }
 });
+
+test('Generator CLI with default arguments writes expected-results.json and SYNTHETIC_NOTICE.txt to tmp/sap-sim/ and leaves tracked fixtures unchanged', () => {
+  const committedExpectedPath = path.join('tests', 'fixtures', 'sap-sim', 'expected-results.json');
+  const committedNoticePath = path.join('tests', 'fixtures', 'sap-sim', 'SYNTHETIC_NOTICE.txt');
+
+  const expectedHashBefore = sha256FileRaw(committedExpectedPath);
+  const noticeHashBefore = sha256FileRaw(committedNoticePath);
+
+  const parsedDefaults = parseCliArgs(['node', 'scripts/generate-sap-sim-data.js']);
+  assert.equal(parsedDefaults.expectedOut, path.join('tmp', 'sap-sim', 'expected-results.json'));
+
+  const tmpOutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sap-sim-cli-default-'));
+  try {
+    execFileSync(
+      process.execPath,
+      [path.resolve('scripts', 'generate-sap-sim-data.js'), '--out', tmpOutDir],
+      { stdio: 'pipe' }
+    );
+
+    const expectedHashAfter = sha256FileRaw(committedExpectedPath);
+    const noticeHashAfter = sha256FileRaw(committedNoticePath);
+    assert.equal(expectedHashAfter, expectedHashBefore, 'Tracked expected-results.json SHA-256 must be unchanged');
+    assert.equal(noticeHashAfter, noticeHashBefore, 'Tracked SYNTHETIC_NOTICE.txt SHA-256 must be unchanged');
+
+    assert.equal(fs.existsSync(path.join('tmp', 'sap-sim', 'expected-results.json')), true);
+    assert.equal(fs.existsSync(path.join('tmp', 'sap-sim', 'SYNTHETIC_NOTICE.txt')), true);
+  } finally {
+    fs.rmSync(tmpOutDir, { recursive: true, force: true });
+    fs.rmSync(path.join('tmp', 'sap-sim'), { recursive: true, force: true });
+  }
+});
+
+test('Explicit fixture regeneration command to a temp path is byte-identical to committed fixtures after LF normalization', () => {
+  const committedExpectedPath = path.join('tests', 'fixtures', 'sap-sim', 'expected-results.json');
+  const committedNoticePath = path.join('tests', 'fixtures', 'sap-sim', 'SYNTHETIC_NOTICE.txt');
+
+  const tmpRegenDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sap-sim-cli-explicit-'));
+  const tmpOutDir = path.join(tmpRegenDir, 'data');
+  const tmpExpectedOut = path.join(tmpRegenDir, 'fixtures', 'expected-results.json');
+  const tmpNoticeOut = path.join(tmpRegenDir, 'fixtures', 'SYNTHETIC_NOTICE.txt');
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        path.resolve('scripts', 'generate-sap-sim-data.js'),
+        '--seed', '42',
+        '--customers', '300',
+        '--today', '2026-11-10',
+        '--out', tmpOutDir,
+        '--expected-out', tmpExpectedOut
+      ],
+      { stdio: 'pipe' }
+    );
+
+    const regeneratedExpected = normalizeLf(fs.readFileSync(tmpExpectedOut, 'utf8'));
+    const committedExpected = normalizeLf(fs.readFileSync(committedExpectedPath, 'utf8'));
+    assert.equal(regeneratedExpected, committedExpected);
+
+    const regeneratedNotice = normalizeLf(fs.readFileSync(tmpNoticeOut, 'utf8'));
+    const committedNotice = normalizeLf(fs.readFileSync(committedNoticePath, 'utf8'));
+    assert.equal(regeneratedNotice, committedNotice);
+  } finally {
+    fs.rmSync(tmpRegenDir, { recursive: true, force: true });
+  }
+});
+
