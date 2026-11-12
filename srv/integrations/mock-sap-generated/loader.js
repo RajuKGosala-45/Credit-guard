@@ -22,7 +22,28 @@ const EXPECTED_CSV_FILES = Object.freeze([
   'BSAD.csv',
   'VBAK.csv'
 ]);
-const DECISION_ELIGIBLE_EXPLANATION = 'Snapshot was promoted (299 valid customers active in portfolio). decisionEligible is false because 4 expected synthetic quality warnings (1 quarantined mixed-currency customer 0001000009 and 3 excluded/deduplicated document items) were recorded during ingestion.';
+function buildDecisionEligibleExplanation({
+  snapshotPromoted,
+  projectedCustomers,
+  quarantinedCustomerCount,
+  qualityIssueCounts = {},
+  decisionEligible
+}) {
+  const errors = qualityIssueCounts.errors ?? 0;
+  const warnings = qualityIssueCounts.warnings ?? 0;
+  const totalIssues = qualityIssueCounts.total ?? (errors + warnings);
+
+  const promotionText = snapshotPromoted
+    ? `Snapshot was promoted (${projectedCustomers} valid customers active in portfolio).`
+    : `Snapshot was not promoted (${projectedCustomers} customers projected).`;
+
+  const details = `${totalIssues} quality issues (${errors} error(s), ${warnings} warning(s)) and ${quarantinedCustomerCount} quarantined customer(s)`;
+
+  if (decisionEligible) {
+    return `${promotionText} decisionEligible is true: run completed safely with ${details}.`;
+  }
+  return `${promotionText} decisionEligible is false because ${details} were recorded during ingestion.`;
+}
 
 let loadInProgress = false;
 
@@ -75,6 +96,16 @@ function buildPublicLoadResult({
     : [];
   const qualityIssueCounts = summarizeIssues(issueRows);
   const issuesTruncated = issueRows.length > 500;
+  const projectedCustomers = projection.CUSTOMER?.sourceRecords ?? 0;
+  const snapshotPromoted = run.snapshotPromoted === true;
+  const decisionEligible = run.decisionEligible === true;
+  const decisionEligibleExplanation = buildDecisionEligibleExplanation({
+    snapshotPromoted,
+    projectedCustomers,
+    quarantinedCustomerCount: quarantinedCustomers.length,
+    qualityIssueCounts,
+    decisionEligible
+  });
 
   return {
     label: SYNTHETIC_LABEL,
@@ -85,11 +116,11 @@ function buildPublicLoadResult({
     asOfDate,
     seed: FIXED_SEED,
     generatedCustomers: FIXED_CUSTOMERS,
-    snapshotPromoted: run.snapshotPromoted === true,
-    decisionEligible: run.decisionEligible === true,
-    decisionEligibleExplanation: DECISION_ELIGIBLE_EXPLANATION,
+    snapshotPromoted,
+    decisionEligible,
+    decisionEligibleExplanation,
     counts: {
-      projectedCustomers: projection.CUSTOMER?.sourceRecords ?? 0,
+      projectedCustomers,
       customersInserted: projection.CUSTOMER?.inserted ?? 0,
       customersUpdated: projection.CUSTOMER?.alreadyPresent ?? 0,
       openItems: {
@@ -173,7 +204,6 @@ async function loadGeneratedSapPortfolio({ db, user, runMonitoring = true } = {}
   const targetDir = path.join(sapSimRoot, 'data');
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 25));
     const simClockDate = defaultSimClock();
     const asOfDate = simClockDate.toISOString().slice(0, 10);
 
@@ -248,7 +278,7 @@ async function loadGeneratedSapPortfolio({ db, user, runMonitoring = true } = {}
 }
 
 module.exports = {
-  DECISION_ELIGIBLE_EXPLANATION,
+  buildDecisionEligibleExplanation,
   FIXED_CUSTOMERS,
   FIXED_SEED,
   SYNTHETIC_LABEL,

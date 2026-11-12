@@ -428,7 +428,7 @@ cds.on('bootstrap', app => {
       const status = error.statusCode || (error instanceof TypeError ? 400 : 500);
       return res.status(status).json({
         label: 'SYNTHETIC - NOT REAL SAP DATA',
-        error: status < 503 || status === 503 ? error.message : 'Mock SAP Generated load could not be completed safely.',
+        error: status < 500 || status === 503 ? error.message : 'Mock SAP Generated load could not be completed safely.',
         ...(error.runId ? { runId: error.runId, errorCategory: error.category } : {}),
         ...(error.category && !error.runId ? { errorCategory: error.category } : {})
       });

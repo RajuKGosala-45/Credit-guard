@@ -8,7 +8,7 @@ const cds = require('@sap/cds');
 const { startCapServer, stopCapServer } = require('./support/cap-server');
 const { generateDataset } = require('../scripts/generate-sap-sim-data');
 const { defaultSimClock, isSapSimEnabled } = require('../srv/integrations/mock-sap-generated/connector');
-const { loadGeneratedSapPortfolio } = require('../srv/integrations/mock-sap-generated/loader');
+const { buildDecisionEligibleExplanation, loadGeneratedSapPortfolio } = require('../srv/integrations/mock-sap-generated/loader');
 
 let server;
 
@@ -94,7 +94,28 @@ test('Startup hook is inert without CREDIT_GUARD_SAP_SIM_AUTOLOAD=true, and load
     assert.equal(load1.body.generatedCustomers, 300);
     assert.equal(load1.body.snapshotPromoted, true);
     assert.equal(load1.body.decisionEligible, false);
-    assert.match(load1.body.decisionEligibleExplanation, /4 expected synthetic quality warnings/);
+    assert.match(load1.body.decisionEligibleExplanation, /Snapshot was promoted/);
+    assert.match(
+      load1.body.decisionEligibleExplanation,
+      new RegExp(`${load1.body.counts.projectedCustomers} valid customers active in portfolio`)
+    );
+    assert.match(
+      load1.body.decisionEligibleExplanation,
+      new RegExp(`${load1.body.qualityIssueCounts.total} quality issues`)
+    );
+    assert.match(
+      load1.body.decisionEligibleExplanation,
+      new RegExp(`${load1.body.qualityIssueCounts.errors} error\\(s\\)`)
+    );
+    assert.match(
+      load1.body.decisionEligibleExplanation,
+      new RegExp(`${load1.body.qualityIssueCounts.warnings} warning\\(s\\)`)
+    );
+    assert.match(
+      load1.body.decisionEligibleExplanation,
+      new RegExp(`${load1.body.quarantinedCustomerCount} quarantined customer\\(s\\)`)
+    );
+    assert.match(load1.body.decisionEligibleExplanation, /decisionEligible is false/);
     assert.deepEqual(load1.body.counts, {
       projectedCustomers: 299,
       customersInserted: 299,
@@ -240,6 +261,8 @@ test('Concurrent loads return one 200 and one 409', async () => {
   assert.deepEqual(statuses, [200, 409]);
   const conflictRes = resA.response.status === 409 ? resA : resB;
   assert.equal(conflictRes.body.label, 'SYNTHETIC - NOT REAL SAP DATA');
+  assert.equal(conflictRes.body.error, 'Mock SAP Generated data load is already in progress.');
+  assert.equal(conflictRes.body.errorCategory, 'load_already_running');
 });
 
 test('Missing scripts/generate-sap-sim-data.js returns 503 and does not crash module load or server startup', async () => {
@@ -349,5 +372,72 @@ test('Gate off returns 403 matching existing generated routes, and startup hook 
     assert.equal(statusRes.body.latestRun.snapshotPromoted, true);
   } finally {
     await stopCapServer(autoloadServer);
+  }
+});
+
+test('buildDecisionEligibleExplanation dynamically formats counts and states when decisionEligible is true or false without hard-coded numbers', () => {
+  const trueResult = buildDecisionEligibleExplanation({
+    snapshotPromoted: true,
+    projectedCustomers: 50,
+    quarantinedCustomerCount: 0,
+    qualityIssueCounts: { total: 0, errors: 0, warnings: 0 },
+    decisionEligible: true
+  });
+  assert.match(trueResult, /Snapshot was promoted \(50 valid customers active in portfolio\)/);
+  assert.match(trueResult, /decisionEligible is true/);
+  assert.match(trueResult, /0 quality issues \(0 error\(s\), 0 warning\(s\)\) and 0 quarantined customer\(s\)/);
+
+  const falseResult = buildDecisionEligibleExplanation({
+    snapshotPromoted: false,
+    projectedCustomers: 12,
+    quarantinedCustomerCount: 3,
+    qualityIssueCounts: { total: 5, errors: 2, warnings: 3 },
+    decisionEligible: false
+  });
+  assert.match(falseResult, /Snapshot was not promoted \(12 customers projected\)/);
+  assert.match(falseResult, /decisionEligible is false/);
+  assert.match(falseResult, /5 quality issues \(2 error\(s\), 3 warning\(s\)\) and 3 quarantined customer\(s\)/);
+});
+
+test('Forced 500 error in POST /api/mock-sap-generated/load returns generic safe error message and conceals internal details', async () => {
+  const loaderModulePath = require.resolve('../srv/integrations/mock-sap-generated/loader');
+  const hookPath = path.join(os.tmpdir(), `sap-sim-load-500-hook-${process.pid}-${Date.now()}.js`);
+  fs.writeFileSync(
+    hookPath,
+    `const loader = require(${JSON.stringify(loaderModulePath)});
+loader.loadGeneratedSapPortfolio = async function forcedInternalFailure() {
+  const error = new Error('FORCED_INTERNAL_DB_SECRET_RAW_EXCEPTION_LEAK_DATA');
+  error.statusCode = 500;
+  error.category = 'database_internal_failure';
+  throw error;
+};\n`,
+    'utf8'
+  );
+
+  const errorServer = await startCapServer({
+    env: {
+      NODE_OPTIONS: `--require ${JSON.stringify(hookPath)}`,
+      CREDIT_GUARD_SAP_SIM: 'true'
+    }
+  });
+
+  try {
+    const errorRes = await request(errorServer.origin, '/api/mock-sap-generated/load', {
+      identity: 'administrator',
+      method: 'POST',
+      body: {}
+    });
+
+    assert.equal(errorRes.response.status, 500);
+    assert.equal(errorRes.body.label, 'SYNTHETIC - NOT REAL SAP DATA');
+    assert.equal(errorRes.body.error, 'Mock SAP Generated load could not be completed safely.');
+    assert.equal(errorRes.body.errorCategory, 'database_internal_failure');
+    assert.equal(
+      JSON.stringify(errorRes.body).includes('FORCED_INTERNAL_DB_SECRET_RAW_EXCEPTION_LEAK_DATA'),
+      false
+    );
+  } finally {
+    await stopCapServer(errorServer);
+    fs.rmSync(hookPath, { force: true });
   }
 });
