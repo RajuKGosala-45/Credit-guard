@@ -258,7 +258,6 @@ cds.on('bootstrap', app => {
     return res.status(200).json({ status: 'ready' });
   });
   if (process.env.CREDIT_GUARD_DEV_DEFAULT_USER) {
-    const defaultAuthHeader = `Basic ${Buffer.from(`${process.env.CREDIT_GUARD_DEV_DEFAULT_USER}:test`).toString('base64')}`;
     const defaultRoleUser = new cds.User({
       id: process.env.CREDIT_GUARD_DEV_DEFAULT_USER,
       roles: [
@@ -273,9 +272,25 @@ cds.on('bootstrap', app => {
         'CreditMonitor'
       ]
     });
+    const isMockedAuth = cds.env.requires.auth?.kind === 'mocked';
+    const defaultAuthHeader = `Basic ${Buffer.from(`${process.env.CREDIT_GUARD_DEV_DEFAULT_USER}:test`).toString('base64')}`;
+
+    cds.middlewares.add((req, _res, next) => {
+      if (cds.context && (!cds.context.user || cds.context.user._is_anonymous)) {
+        cds.context.user = defaultRoleUser;
+      }
+      if (!req.user || req.user._is_anonymous) {
+        req.user = defaultRoleUser;
+      }
+      next();
+    }, { after: 'auth' });
+
     app.use((req, res, next) => {
-      if (!req.headers.authorization) {
+      if (isMockedAuth && !req.headers.authorization) {
         req.headers.authorization = defaultAuthHeader;
+      }
+      if (cds.context && (!cds.context.user || cds.context.user._is_anonymous)) {
+        cds.context.user = defaultRoleUser;
       }
       if (!req.user || req.user._is_anonymous) {
         req.user = defaultRoleUser;
@@ -286,7 +301,7 @@ cds.on('bootstrap', app => {
       next();
     });
   }
-  app.use('/credit', cds.middlewares.before, express.static(path.join(__dirname, '..', 'app', 'credit')));
+  app.use('/credit', express.static(path.join(__dirname, '..', 'app', 'credit')));
   app.use('/api', cds.middlewares.before);
   app.use('/api', express.json());
   app.use('/api', requireAuthenticatedUser);
