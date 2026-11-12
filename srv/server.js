@@ -301,7 +301,7 @@ cds.on('bootstrap', app => {
       next();
     });
   }
-  app.use('/credit', express.static(path.join(__dirname, '..', 'app', 'credit')));
+  app.use('/credit', cds.middlewares.before, express.static(path.join(__dirname, '..', 'app', 'credit')));
   app.use('/api', cds.middlewares.before);
   app.use('/api', express.json());
   app.use('/api', requireAuthenticatedUser);

@@ -1,0 +1,2198 @@
+Build MTA Archive (.mtar)
+failed 1 minute ago in 35s
+Search logs
+1s
+1s
+2s
+3s
+26s
+Run npm test
+
+> credit-guard@1.0.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# Subtest: ABAP CDS projections and service definition match the read-only connector contract
+ok 1 - ABAP CDS projections and service definition match the read-only connector contract
+  ---
+  duration_ms: 1.17599
+  type: 'test'
+  ...
+# Subtest: synthetic ABAP CSV rows fit connector keys and include matching currencies
+ok 2 - synthetic ABAP CSV rows fit connector keys and include matching currencies
+  ---
+  duration_ms: 0.332483
+  type: 'test'
+  ...
+# Subtest: ABAP connector follows same-origin OData pagination and applies deterministic Credit Guard rules
+ok 3 - ABAP connector follows same-origin OData pagination and applies deterministic Credit Guard rules
+  ---
+  duration_ms: 2.822371
+  type: 'test'
+  ...
+# Subtest: ABAP collection paging stops after cancellation and caps requests to the remaining budget
+ok 4 - ABAP collection paging stops after cancellation and caps requests to the remaining budget
+  ---
+  duration_ms: 0.607209
+  type: 'test'
+  ...
+# Subtest: ABAP collection does not start the next page when cancellation arrives between pages
+ok 5 - ABAP collection does not start the next page when cancellation arrives between pages
+  ---
+  duration_ms: 0.301797
+  type: 'test'
+  ...
+# Subtest: ABAP connector reports a missing exact customer as 404, without using local records
+ok 6 - ABAP connector reports a missing exact customer as 404, without using local records
+  ---
+  duration_ms: 0.241385
+  type: 'test'
+  ...
+# Subtest: ABAP connector rejects missing required customer and open-item fields
+ok 7 - ABAP connector rejects missing required customer and open-item fields
+  ---
+  duration_ms: 0.414377
+  type: 'test'
+  ...
+# Subtest: ABAP connector refuses currency mismatches before calculating exposure
+ok 8 - ABAP connector refuses currency mismatches before calculating exposure
+  ---
+  duration_ms: 0.229227
+  type: 'test'
+  ...
+# Subtest: ABAP portfolio rejects an open-item ID assigned to multiple customers
+ok 9 - ABAP portfolio rejects an open-item ID assigned to multiple customers
+  ---
+  duration_ms: 0.427176
+  type: 'test'
+  ...
+# Subtest: ABAP connector safely categorizes timeouts and authorization failures
+ok 10 - ABAP connector safely categorizes timeouts and authorization failures
+  ---
+  duration_ms: 0.404982
+  type: 'test'
+  ...
+# Subtest: ABAP connector rejects cross-origin pagination links to prevent credential forwarding
+ok 11 - ABAP connector rejects cross-origin pagination links to prevent credential forwarding
+  ---
+  duration_ms: 0.386825
+  type: 'test'
+  ...
+# Subtest: ABAP connector validates relative endpoint configuration and customer identifiers
+ok 12 - ABAP connector validates relative endpoint configuration and customer identifiers
+  ---
+  duration_ms: 0.583153
+  type: 'test'
+  ...
+# Subtest: ABAP connector rejects open-item identifiers that do not fit the CDS key
+ok 13 - ABAP connector rejects open-item identifiers that do not fit the CDS key
+  ---
+  duration_ms: 0.352884
+  type: 'test'
+  ...
+# Subtest: ABAP Agent tools enforce reader permission and return source timestamps
+ok 14 - ABAP Agent tools enforce reader permission and return source timestamps
+  ---
+  duration_ms: 0.881984
+  type: 'test'
+  ...
+# Subtest: ABAP offline analysis is deterministic and unavailable services never fall back to local demo data
+ok 15 - ABAP offline analysis is deterministic and unavailable services never fall back to local demo data
+  ---
+  duration_ms: 38.687075
+  type: 'test'
+  ...
+# Subtest: ABAP customer provider can be selected without changing deterministic business rules
+ok 16 - ABAP customer provider can be selected without changing deterministic business rules
+  ---
+  duration_ms: 0.378713
+  type: 'test'
+  ...
+# Subtest: ABAP non-production destination returns the synthetic connector contract
+ok 17 - ABAP non-production destination returns the synthetic connector contract # SKIP
+  ---
+  duration_ms: 0.613298
+  type: 'test'
+  ...
+# Subtest: creates and executes a simple validated read-only plan
+ok 18 - creates and executes a simple validated read-only plan
+  ---
+  duration_ms: 6.189396
+  type: 'test'
+  ...
+# Subtest: decomposes a portfolio request and runs dependent customer reads sequentially
+ok 19 - decomposes a portfolio request and runs dependent customer reads sequentially
+  ---
+  duration_ms: 2.142071
+  type: 'test'
+  ...
+# Subtest: resolves a customer name to its identity before retrieving financial detail
+ok 20 - resolves a customer name to its identity before retrieving financial detail
+  ---
+  duration_ms: 1.087947
+  type: 'test'
+  ...
+# Subtest: executes independent read-only tasks sequentially in plan order
+ok 21 - executes independent read-only tasks sequentially in plan order
+  ---
+  duration_ms: 0.854072
+  type: 'test'
+  ...
+# Subtest: rejects unknown tools, invalid task types, cycles, and permission fields before execution
+ok 22 - rejects unknown tools, invalid task types, cycles, and permission fields before execution
+  ---
+  duration_ms: 1.183501
+  type: 'test'
+  ...
+# Subtest: failed prerequisites block dependent tasks while independent tasks continue
+ok 23 - failed prerequisites block dependent tasks while independent tasks continue
+  ---
+  duration_ms: 1.924572
+  type: 'test'
+  ...
+# Subtest: enforces the global tool-call limit and reports partial fan-out honestly
+ok 24 - enforces the global tool-call limit and reports partial fan-out honestly
+  ---
+  duration_ms: 4.319296
+  type: 'test'
+  ...
+# Subtest: authorization remains enforced at execution and proposal inputs must be explicit
+ok 25 - authorization remains enforced at execution and proposal inputs must be explicit
+  ---
+  duration_ms: 1.245465
+  type: 'test'
+  ...
+# Subtest: requests clarification when ranking criteria are undefined without running tools
+ok 26 - requests clarification when ranking criteria are undefined without running tools
+  ---
+  duration_ms: 0.889896
+  type: 'test'
+  ...
+# Subtest: does not invent a high-risk ranking when the model omits clarification
+ok 27 - does not invent a high-risk ranking when the model omits clarification
+  ---
+  duration_ms: 4.39421
+  type: 'test'
+  ...
+# Subtest: retries transient read failures at most twice and records every attempt
+ok 28 - retries transient read failures at most twice and records every attempt
+  ---
+  duration_ms: 1.520411
+  type: 'test'
+  ...
+# Subtest: retries an individual network timeout when the overall deadline allows it
+ok 29 - retries an individual network timeout when the overall deadline allows it
+  ---
+  duration_ms: 4.960598
+  type: 'test'
+  ...
+# Subtest: retries retryable HTTP failures up to the bounded maximum
+ok 30 - retries retryable HTTP failures up to the bounded maximum
+  ---
+  duration_ms: 0.772999
+  type: 'test'
+  ...
+# Subtest: retries HTTP 429, 500, 502, and 504 as transient read failures
+    # Subtest: HTTP 429
+    ok 1 - HTTP 429
+      ---
+      duration_ms: 0.771147
+      type: 'test'
+      ...
+    # Subtest: HTTP 500
+    ok 2 - HTTP 500
+      ---
+      duration_ms: 0.446786
+      type: 'test'
+      ...
+    # Subtest: HTTP 502
+    ok 3 - HTTP 502
+      ---
+      duration_ms: 0.307595
+      type: 'test'
+      ...
+    # Subtest: HTTP 504
+    ok 4 - HTTP 504
+      ---
+      duration_ms: 0.299122
+      type: 'test'
+      ...
+    1..4
+ok 31 - retries HTTP 429, 500, 502, and 504 as transient read failures
+  ---
+  duration_ms: 2.130684
+  type: 'test'
+  ...
+# Subtest: does not retry authentication or validation failures
+    # Subtest: HTTP 401
+    ok 1 - HTTP 401
+      ---
+      duration_ms: 0.532666
+      type: 'test'
+      ...
+    # Subtest: HTTP 403
+    ok 2 - HTTP 403
+      ---
+      duration_ms: 0.347756
+      type: 'test'
+      ...
+    # Subtest: HTTP 400
+    ok 3 - HTTP 400
+      ---
+      duration_ms: 0.377101
+      type: 'test'
+      ...
+    # Subtest: wrapped ABAP HTTP 401
+    ok 4 - wrapped ABAP HTTP 401
+      ---
+      duration_ms: 0.371643
+      type: 'test'
+      ...
+    # Subtest: wrapped ABAP HTTP 400
+    ok 5 - wrapped ABAP HTTP 400
+      ---
+      duration_ms: 0.334707
+      type: 'test'
+      ...
+    # Subtest: invalid input
+    ok 6 - invalid input
+      ---
+      duration_ms: 0.309548
+      type: 'test'
+      ...
+    1..6
+ok 32 - does not retry authentication or validation failures
+  ---
+  duration_ms: 2.709831
+  type: 'test'
+  ...
+# Subtest: execution budget prevents a retry when no tool-call capacity remains
+ok 33 - execution budget prevents a retry when no tool-call capacity remains
+  ---
+  duration_ms: 3.625597
+  type: 'test'
+  ...
+# Subtest: overall deadline prevents a retry when insufficient time remains
+ok 34 - overall deadline prevents a retry when insufficient time remains
+  ---
+  duration_ms: 81.622971
+  type: 'test'
+  ...
+# Subtest: proposal operations are never retried after a transient server failure
+ok 35 - proposal operations are never retried after a transient server failure
+  ---
+  duration_ms: 2.709771
+  type: 'test'
+  ...
+# Subtest: legitimate empty read-only lists are successful and clearly summarized
+    # Subtest: no customers above the threshold
+    ok 1 - no customers above the threshold
+      ---
+      duration_ms: 0.513116
+      type: 'test'
+      ...
+    # Subtest: no exposure groups
+    ok 2 - no exposure groups
+      ---
+      duration_ms: 1.547986
+      type: 'test'
+      ...
+    # Subtest: no pending requests
+    ok 3 - no pending requests
+      ---
+      duration_ms: 0.727491
+      type: 'test'
+      ...
+    1..3
+ok 36 - legitimate empty read-only lists are successful and clearly summarized
+  ---
+  duration_ms: 3.077361
+  type: 'test'
+  ...
+# Subtest: valid non-empty read-only list results remain successful
+ok 37 - valid non-empty read-only list results remain successful
+  ---
+  duration_ms: 0.698213
+  type: 'test'
+  ...
+# Subtest: tool result validation rejects null, undefined, and malformed values
+ok 38 - tool result validation rejects null, undefined, and malformed values
+  ---
+  duration_ms: 0.119611
+  type: 'test'
+  ...
+# Subtest: empty arrays are not accepted from tools whose result contract is an object
+ok 39 - empty arrays are not accepted from tools whose result contract is an object
+  ---
+  duration_ms: 0.067342
+  type: 'test'
+  ...
+# Subtest: an actual tool failure remains a failed task, not an empty success
+ok 40 - an actual tool failure remains a failed task, not an empty success
+  ---
+  duration_ms: 0.512436
+  type: 'test'
+  ...
+# Subtest: empty list results remain valid when resuming an eligible plan
+ok 41 - empty list results remain valid when resuming an eligible plan
+  ---
+  duration_ms: 0.615351
+  type: 'test'
+  ...
+# Subtest: malformed registered-tool output is not marked successful
+ok 42 - malformed registered-tool output is not marked successful
+  ---
+  duration_ms: 0.570644
+  type: 'test'
+  ...
+# Subtest: resumes eligible work without repeating completed tasks
+ok 43 - resumes eligible work without repeating completed tasks
+  ---
+  duration_ms: 0.764938
+  type: 'test'
+  ...
+# Subtest: persists progress checkpoints while keeping execution responses minimized
+ok 44 - persists progress checkpoints while keeping execution responses minimized
+  ---
+  duration_ms: 1.05016
+  type: 'test'
+  ...
+# Subtest: preserves partial execution state when the global timeout expires
+ok 45 - preserves partial execution state when the global timeout expires
+  ---
+  duration_ms: 11.746015
+  type: 'test'
+  ...
+# Subtest: accepts a valid versioned read-only and proposal plan with dependencies
+ok 46 - accepts a valid versioned read-only and proposal plan with dependencies
+  ---
+  duration_ms: 2.437158
+  type: 'test'
+  ...
+# Subtest: rejects missing plan and task fields
+ok 47 - rejects missing plan and task fields
+  ---
+  duration_ms: 0.501249
+  type: 'test'
+  ...
+# Subtest: rejects invalid and duplicate plan or task identifiers
+ok 48 - rejects invalid and duplicate plan or task identifiers
+  ---
+  duration_ms: 0.224129
+  type: 'test'
+  ...
+# Subtest: rejects unknown tools and invalid task types, task statuses, or plan statuses
+ok 49 - rejects unknown tools and invalid task types, task statuses, or plan statuses
+  ---
+  duration_ms: 0.325412
+  type: 'test'
+  ...
+# Subtest: rejects missing tool inputs, unsupported tool inputs, and invalid completion criteria
+ok 50 - rejects missing tool inputs, unsupported tool inputs, and invalid completion criteria
+  ---
+  duration_ms: 0.510202
+  type: 'test'
+  ...
+# Subtest: rejects nonexistent and circular dependencies
+ok 51 - rejects nonexistent and circular dependencies
+  ---
+  duration_ms: 0.215305
+  type: 'test'
+  ...
+# Subtest: READY tasks require every dependency to be COMPLETED
+ok 52 - READY tasks require every dependency to be COMPLETED
+  ---
+  duration_ms: 0.543333
+  type: 'test'
+  ...
+# Subtest: validates bounded dynamic customer references and dependency outputs
+ok 53 - validates bounded dynamic customer references and dependency outputs
+  ---
+  duration_ms: 0.380716
+  type: 'test'
+  ...
+# Subtest: enforces configurable task-count bounds and the hard maximum
+ok 54 - enforces configurable task-count bounds and the hard maximum
+  ---
+  duration_ms: 0.40295
+  type: 'test'
+  ...
+# Subtest: requires proposal classification for proposal tools and rejects proposal tools as read-only
+ok 55 - requires proposal classification for proposal tools and rejects proposal tools as read-only
+  ---
+  duration_ms: 0.455229
+  type: 'test'
+  ...
+# Subtest: plans cannot add permissions, executable instructions, or unknown contract fields
+ok 56 - plans cannot add permissions, executable instructions, or unknown contract fields
+  ---
+  duration_ms: 0.322959
+  type: 'test'
+  ...
+# Subtest: allows partial completion only when completed and incomplete tasks are both represented
+ok 57 - allows partial completion only when completed and incomplete tasks are both represented
+  ---
+  duration_ms: 0.253714
+  type: 'test'
+  ...
+# Subtest: validates bounded task results and sanitized failure categories
+ok 58 - validates bounded task results and sanitized failure categories
+  ---
+  duration_ms: 0.339904
+  type: 'test'
+  ...
+# Subtest: does not mutate the supplied plan while validating it
+ok 59 - does not mutate the supplied plan while validating it
+  ---
+  duration_ms: 0.260654
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: persists and reloads progress while hiding recovery-only data from reads
+ok 60 - persists and reloads progress while hiding recovery-only data from reads
+  ---
+  duration_ms: 483.815055
+  type: 'test'
+  ...
+# Subtest: updates each attempt outcome rather than leaving a stale persisted step
+ok 61 - updates each attempt outcome rather than leaving a stale persisted step
+  ---
+  duration_ms: 11.097574
+  type: 'test'
+  ...
+# Subtest: owner-scoped recovery claims allow only one concurrent claimant
+ok 62 - owner-scoped recovery claims allow only one concurrent claimant
+  ---
+  duration_ms: 9.702783
+  type: 'test'
+  ...
+# Subtest: a stale running task is marked for manual review instead of repeated
+ok 63 - a stale running task is marked for manual review instead of repeated
+  ---
+  duration_ms: 9.111979
+  type: 'test'
+  ...
+# Subtest: stored proposal inputs are replaced with safe placeholders
+ok 64 - stored proposal inputs are replaced with safe placeholders
+  ---
+  duration_ms: 7.838122
+  type: 'test'
+  ...
+# Subtest: clarification drafts are not exposed as automatically recoverable work
+ok 65 - clarification drafts are not exposed as automatically recoverable work
+  ---
+  duration_ms: 3.916937
+  type: 'test'
+  ...
+# Subtest: AI prepares a validated pending request for explicit user confirmation
+ok 66 - AI prepares a validated pending request for explicit user confirmation
+  ---
+  duration_ms: 8.429697
+  type: 'test'
+  ...
+# Subtest: agent cannot prepare a local credit-limit proposal when configured for read-only ABAP
+ok 67 - agent cannot prepare a local credit-limit proposal when configured for read-only ABAP
+  ---
+  duration_ms: 2.663611
+  type: 'test'
+  ...
+# Subtest: AI planning rejects a negative requested limit before execution
+ok 68 - AI planning rejects a negative requested limit before execution
+  ---
+  duration_ms: 0.702503
+  type: 'test'
+  ...
+# Subtest: AI proposal validation rejects blank reasons
+ok 69 - AI proposal validation rejects blank reasons
+  ---
+  duration_ms: 0.593979
+  type: 'test'
+  ...
+# Subtest: AI planning rejects reasons beyond the CDS limit before execution
+ok 70 - AI planning rejects reasons beyond the CDS limit before execution
+  ---
+  duration_ms: 0.798127
+  type: 'test'
+  ...
+# Subtest: AI proposal tools require a requester entitlement
+ok 71 - AI proposal tools require a requester entitlement
+  ---
+  duration_ms: 1.263442
+  type: 'test'
+  ...
+# Subtest: AI proposal rejects unknown customers without inserting a request
+ok 72 - AI proposal rejects unknown customers without inserting a request
+  ---
+  duration_ms: 1.048326
+  type: 'test'
+  ...
+# Subtest: tool registry validates inputs and enforces reader and requester permissions
+ok 73 - tool registry validates inputs and enforces reader and requester permissions
+  ---
+  duration_ms: 0.290249
+  type: 'test'
+  ...
+# Subtest: agent controller performs bounded multi-step tool execution and records summaries
+ok 74 - agent controller performs bounded multi-step tool execution and records summaries
+  ---
+  duration_ms: 1.702216
+  type: 'test'
+  ...
+# Subtest: customer context includes actual local payment records when available
+ok 75 - customer context includes actual local payment records when available
+  ---
+  duration_ms: 3.883998
+  type: 'test'
+  ...
+# Subtest: authorized agent tools retrieve grounded customer, dashboard, approval, alert, and ingestion data
+ok 76 - authorized agent tools retrieve grounded customer, dashboard, approval, alert, and ingestion data
+  ---
+  duration_ms: 8.789026
+  type: 'test'
+  ...
+# Subtest: new cross-module reads remain role-gated and workflow preview does not execute actions
+ok 77 - new cross-module reads remain role-gated and workflow preview does not execute actions
+  ---
+  duration_ms: 0.524915
+  type: 'test'
+  ...
+# Subtest: workflow creation requests produce a persisted preview plan without running its steps
+ok 78 - workflow creation requests produce a persisted preview plan without running its steps
+  ---
+  duration_ms: 3.473977
+  type: 'test'
+  ...
+# Subtest: agent response retains existing public fields and adds a validated plan
+ok 79 - agent response retains existing public fields and adds a validated plan
+  ---
+  duration_ms: 0.602492
+  type: 'test'
+  ...
+# Subtest: agent execution enforces a timeout and step limit
+ok 80 - agent execution enforces a timeout and step limit
+  ---
+  duration_ms: 14.624582
+  type: 'test'
+  ...
+# Subtest: provider failures are categorized without exposing credentials
+ok 81 - provider failures are categorized without exposing credentials
+  ---
+  duration_ms: 14.791725
+  type: 'test'
+  ...
+# Subtest: agent selects configured Gemini provider and model without exposing its key
+ok 82 - agent selects configured Gemini provider and model without exposing its key
+  ---
+  duration_ms: 44.262833
+  type: 'test'
+  ...
+# Subtest: Gemini recommendations cannot turn into a proposal without explicit user intent
+ok 83 - Gemini recommendations cannot turn into a proposal without explicit user intent
+  ---
+  duration_ms: 0.74671
+  type: 'test'
+  ...
+# Subtest: offline mode records why provider fallback was used
+ok 84 - offline mode records why provider fallback was used
+  ---
+  duration_ms: 1.319316
+  type: 'test'
+  ...
+# Subtest: dashboard API returns the established KPI and exposure contract
+ok 85 - dashboard API returns the established KPI and exposure contract
+  ---
+  duration_ms: 1045.848278
+  type: 'test'
+  ...
+# Subtest: health endpoints are unauthenticated and report application readiness
+ok 86 - health endpoints are unauthenticated and report application readiness
+  ---
+  duration_ms: 6.154614
+  type: 'test'
+  ...
+# Subtest: session capabilities reflect authenticated roles used by the demo UI
+ok 87 - session capabilities reflect authenticated roles used by the demo UI
+  ---
+  duration_ms: 29.519802
+  type: 'test'
+  ...
+# Subtest: SAP read-only mode reports unavailable workflow capabilities and blocks direct submissions
+ok 88 - SAP read-only mode reports unavailable workflow capabilities and blocks direct submissions
+  ---
+  duration_ms: 1150.445209
+  type: 'test'
+  ...
+# Subtest: customer APIs return calculated summaries, details, and a 404 for unknown IDs
+ok 89 - customer APIs return calculated summaries, details, and a 404 for unknown IDs
+  ---
+  duration_ms: 20.087545
+  type: 'test'
+  ...
+# Subtest: offline assistant grounds portfolio analysis in monitoring findings and prepares human-reviewed proposals
+ok 90 - offline assistant grounds portfolio analysis in monitoring findings and prepares human-reviewed proposals
+  ---
+  duration_ms: 702.861383
+  type: 'test'
+  ...
+# Subtest: offline assistant answers customer-name and extraction questions with explicit module provenance
+ok 91 - offline assistant answers customer-name and extraction questions with explicit module provenance
+  ---
+  duration_ms: 47.516828
+  type: 'test'
+  ...
+# Subtest: API requires a CAP-authenticated identity and enforces reader/requester roles
+not ok 92 - API requires a CAP-authenticated identity and enforces reader/requester roles
+  ---
+  duration_ms: 9.310085
+  type: 'test'
+  location: '/home/runner/work/Credit-guard/Credit-guard/tests/api.integration.test.js:293:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    200 !== 401
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 401
+  actual: 200
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/runner/work/Credit-guard/Credit-guard/tests/api.integration.test.js:295:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: request API rejects invalid fields and unknown customers without creating requests
+ok 93 - request API rejects invalid fields and unknown customers without creating requests
+  ---
+  duration_ms: 36.76094
+  type: 'test'
+  ...
+# Subtest: valid request API creates a Pending request with routing and list contract
+ok 94 - valid request API creates a Pending request with routing and list contract
+  ---
+  duration_ms: 12.669682
+  type: 'test'
+  ...
+# Subtest: limit-request idempotency replays the same request and preserves its single audit event
+ok 95 - limit-request idempotency replays the same request and preserves its single audit event
+  ---
+  duration_ms: 19.979769
+  type: 'test'
+  ...
+# Subtest: limit-request idempotency rejects a materially different payload for the same key
+ok 96 - limit-request idempotency rejects a materially different payload for the same key
+  ---
+  duration_ms: 6.580749
+  type: 'test'
+  ...
+# Subtest: different idempotency keys permit separate requests with identical business data
+ok 97 - different idempotency keys permit separate requests with identical business data
+  ---
+  duration_ms: 6.975495
+  type: 'test'
+  ...
+# Subtest: concurrent identical limit-request submissions create one durable request
+ok 98 - concurrent identical limit-request submissions create one durable request
+  ---
+  duration_ms: 5.730676
+  type: 'test'
+  ...
+# Subtest: limit-request idempotency is authorization-gated and scoped to the requester
+ok 99 - limit-request idempotency is authorization-gated and scoped to the requester
+  ---
+  duration_ms: 11.52254
+  type: 'test'
+  ...
+# Subtest: failed validation does not reserve a key, and a committed retry replays safely
+ok 100 - failed validation does not reserve a key, and a committed retry replays safely
+  ---
+  duration_ms: 7.616095
+  type: 'test'
+  ...
+# Subtest: approval and rejection transitions preserve limits and reject duplicate decisions
+ok 101 - approval and rejection transitions preserve limits and reject duplicate decisions
+  ---
+  duration_ms: 37.371275
+  type: 'test'
+  ...
+# Subtest: concurrent decisions transition a request once and create an immutable audit record
+ok 102 - concurrent decisions transition a request once and create an immutable audit record
+  ---
+  duration_ms: 46.531863
+  type: 'test'
+  ...
+# Subtest: request decisions require a bounded audit reason
+ok 103 - request decisions require a bounded audit reason
+  ---
+  duration_ms: 9.764539
+  type: 'test'
+  ...
+# Subtest: requesters cannot decide their own requests
+ok 104 - requesters cannot decide their own requests
+  ---
+  duration_ms: 5.667872
+  type: 'test'
+  ...
+# Subtest: decision endpoint validates decision, role, and request existence
+ok 105 - decision endpoint validates decision, role, and request existence
+  ---
+  duration_ms: 4.074839
+  type: 'test'
+  ...
+# Subtest: Gemini connectivity endpoint is authenticated and safely reports missing configuration
+ok 106 - Gemini connectivity endpoint is authenticated and safely reports missing configuration
+  ---
+  duration_ms: 2.198909
+  type: 'test'
+  ...
+# Subtest: chat API returns an offline assistant contract and validates empty messages
+ok 107 - chat API returns an offline assistant contract and validates empty messages
+  ---
+  duration_ms: 9.126147
+  type: 'test'
+  ...
+# Subtest: workflow requests return a persisted preview and do not execute extraction or monitoring
+ok 108 - workflow requests return a persisted preview and do not execute extraction or monitoring
+  ---
+  duration_ms: 8.929353
+  type: 'test'
+  ...
+# Subtest: conversation history and execution logs are isolated by authenticated user and can be cleared
+ok 109 - conversation history and execution logs are isolated by authenticated user and can be cleared
+  ---
+  duration_ms: 26.659402
+  type: 'test'
+  ...
+# Subtest: document analysis API accepts UTF-8 text and rejects unsupported extensions
+ok 110 - document analysis API accepts UTF-8 text and rejects unsupported extensions
+  ---
+  duration_ms: 18.059416
+  type: 'test'
+  ...
+# Subtest: request API rejects reasons beyond the CDS limit
+ok 111 - request API rejects reasons beyond the CDS limit
+  ---
+  duration_ms: 3.320096
+  type: 'test'
+  ...
+# Subtest: request API IDs fit the CDS String(12) key width
+ok 112 - request API IDs fit the CDS String(12) key width
+  ---
+  duration_ms: 4.488315
+  type: 'test'
+  ...
+# Subtest: OData requires reader scope and rejects generic writes
+ok 113 - OData requires reader scope and rejects generic writes
+  ---
+  duration_ms: 32.302125
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: Autonomous Credit Decision Engine evaluates low-risk, high-value, and high-risk requests deterministically
+ok 114 - Autonomous Credit Decision Engine evaluates low-risk, high-value, and high-risk requests deterministically
+  ---
+  duration_ms: 718.608173
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: processPendingRequestsAutonomously auto-approves low-risk requests, syncs to SAP, and escalates large requests
+ok 115 - processPendingRequestsAutonomously auto-approves low-risk requests, syncs to SAP, and escalates large requests
+  ---
+  duration_ms: 314.53727
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: evaluatePortfolioAutonomousActions scans all 13 Business Partners and classifies actions
+ok 116 - evaluatePortfolioAutonomousActions scans all 13 Business Partners and classifies actions
+  ---
+  duration_ms: 351.863678
+  type: 'test'
+  ...
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_started',
+#   slotKey: 'scheduled:5m:1794474602',
+#   force: false,
+#   triggeredBy: 'AUTONOMOUS_SCHEDULER'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_finished',
+#   slotKey: 'scheduled:5m:1794474602',
+#   runId: '6916784f-822a-4da0-8684-fb94f7b39e6f',
+#   durationMs: 2,
+#   snapshotCount: 0
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_started',
+#   slotKey: 'scheduled:5m:1794474602',
+#   force: false,
+#   triggeredBy: 'AUTONOMOUS_SCHEDULER'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_slot_already_claimed',
+#   slotKey: 'scheduled:5m:1794474602'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_started',
+#   slotKey: 'manual:force:40d11295-a1ea-45d7-97bd-6ef0bc7d219c',
+#   force: true,
+#   triggeredBy: 'AUTONOMOUS_SCHEDULER'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_finished',
+#   slotKey: 'manual:force:40d11295-a1ea-45d7-97bd-6ef0bc7d219c',
+#   runId: 'b0047e02-8f96-4fea-bd56-f53b28b94405',
+#   durationMs: 0,
+#   snapshotCount: 0
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_scheduler_started',
+#   intervalMs: 30,
+#   initialDelayMs: 10
+# }
+# Subtest: validates constructor parameters and boundaries
+ok 117 - validates constructor parameters and boundaries
+  ---
+  duration_ms: 1.112313
+  type: 'test'
+  ...
+# Subtest: executes autonomous cycle, tracks telemetry, and prevents slot collisions
+ok 118 - executes autonomous cycle, tracks telemetry, and prevents slot collisions
+  ---
+  duration_ms: 6.735784
+  type: 'test'
+  ...
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_started',
+#   slotKey: 'scheduled:5m:59815820085',
+#   force: false,
+#   triggeredBy: 'AUTONOMOUS_SCHEDULER'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_finished',
+#   slotKey: 'scheduled:5m:59815820085',
+#   runId: '6bd7dd16-84c3-4625-ba48-30995237398c',
+#   durationMs: 0,
+#   snapshotCount: 0
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_started',
+#   slotKey: 'scheduled:5m:59815820086',
+#   force: false,
+#   triggeredBy: 'AUTONOMOUS_SCHEDULER'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_finished',
+#   slotKey: 'scheduled:5m:59815820086',
+#   runId: '2b79a5a9-cec0-4d7e-a71c-08637580dd03',
+#   durationMs: 4,
+#   snapshotCount: 0
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_started',
+#   slotKey: 'scheduled:5m:59815820087',
+#   force: false,
+#   triggeredBy: 'AUTONOMOUS_SCHEDULER'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_finished',
+#   slotKey: 'scheduled:5m:59815820087',
+#   runId: '696d4f89-5b3a-4802-ab96-9cd9eb7e6bc0',
+#   durationMs: 0,
+#   snapshotCount: 0
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_scheduler_started',
+#   intervalMs: 50,
+#   initialDelayMs: 0
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_started',
+#   slotKey: 'scheduled:5m:35889492052',
+#   force: false,
+#   triggeredBy: 'AUTONOMOUS_SCHEDULER'
+# }
+# [autonomous-scheduler] - { event: 'autonomous_scheduler_draining', drainTimeoutMs: 5000 }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_cycle_finished',
+#   slotKey: 'scheduled:5m:35889492052',
+#   runId: '6b459e35-19cb-4eec-bc1d-d01e720e1ea9',
+#   durationMs: 0,
+#   snapshotCount: 0
+# }
+# Subtest: starts and periodically executes with graceful stop
+ok 119 - starts and periodically executes with graceful stop
+  ---
+  duration_ms: 81.189335
+  type: 'test'
+  ...
+# Subtest: factory startAutonomousScheduler registers singleton and cleans up
+ok 120 - factory startAutonomousScheduler registers singleton and cleans up
+  ---
+  duration_ms: 1.189149
+  type: 'test'
+  ...
+# Subtest: CANONICAL_AGENT_TOOLS defines all 8 deterministic FIN-FSCM-CR tools
+ok 121 - CANONICAL_AGENT_TOOLS defines all 8 deterministic FIN-FSCM-CR tools
+  ---
+  duration_ms: 0.9849
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: executeCanonicalAgentTool and runCanonicalAgentQuery return exact deterministic FIN-FSCM-CR metrics
+ok 122 - executeCanonicalAgentTool and runCanonicalAgentQuery return exact deterministic FIN-FSCM-CR metrics
+  ---
+  duration_ms: 659.480459
+  type: 'test'
+  ...
+# Subtest: resolveDatabaseConfig falls back to SQLITE_FALLBACK when HANA env vars are absent
+ok 123 - resolveDatabaseConfig falls back to SQLITE_FALLBACK when HANA env vars are absent
+  ---
+  duration_ms: 0.61485
+  type: 'test'
+  ...
+# Subtest: resolveDatabaseConfig detects HANA_CLOUD when HANA env vars are provided and hides secrets in public status
+ok 124 - resolveDatabaseConfig detects HANA_CLOUD when HANA env vars are provided and hides secrets in public status
+  ---
+  duration_ms: 0.123567
+  type: 'test'
+  ...
+# Subtest: all SAP table and field references carry verified=false and standard verification note
+ok 125 - all SAP table and field references carry verified=false and standard verification note
+  ---
+  duration_ms: 0.117778
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: canonical repository persists and queries all 10 CG_* FIN-FSCM-CR entities
+ok 126 - canonical repository persists and queries all 10 CG_* FIN-FSCM-CR entities
+  ---
+  duration_ms: 596.821963
+  type: 'test'
+  ...
+# Subtest: CAP profiles separate in-memory development, durable local, and production adapters
+ok 127 - CAP profiles separate in-memory development, durable local, and production adapters
+  ---
+  duration_ms: 165.023681
+  type: 'test'
+  ...
+# Subtest: XSUAA role templates define all supported business role collections and permissions
+ok 128 - XSUAA role templates define all supported business role collections and permissions
+  ---
+  duration_ms: 0.422549
+  type: 'test'
+  ...
+# Subtest: CAP production XSUAA authentication fails closed without a bound service
+ok 129 - CAP production XSUAA authentication fails closed without a bound service
+  ---
+  duration_ms: 87.157115
+  type: 'test'
+  ...
+# Subtest: production startup rejects SQLite, mocked authentication, and missing ABAP bindings
+ok 130 - production startup rejects SQLite, mocked authentication, and missing ABAP bindings
+  ---
+  duration_ms: 0.800271
+  type: 'test'
+  ...
+# Subtest: production startup permits explicitly opted-in HANA synthetic demo without ABAP binding
+ok 131 - production startup permits explicitly opted-in HANA synthetic demo without ABAP binding
+  ---
+  duration_ms: 0.851158
+  type: 'test'
+  ...
+# Subtest: production startup requires HANA, XSUAA, Destination, and Job Scheduler bindings in ABAP mode
+ok 132 - production startup requires HANA, XSUAA, Destination, and Job Scheduler bindings in ABAP mode
+  ---
+  duration_ms: 0.162175
+  type: 'test'
+  ...
+# Subtest: MTA selects explicit HANA synthetic demo mode and includes HDI table data generation
+ok 133 - MTA selects explicit HANA synthetic demo mode and includes HDI table data generation
+  ---
+  duration_ms: 10.863771
+  type: 'test'
+  ...
+# Subtest: App Router exposes application routes directly for demo deployment
+ok 134 - App Router exposes application routes directly for demo deployment
+  ---
+  duration_ms: 6.962186
+  type: 'test'
+  ...
+# Subtest: CSV parser preserves quoted commas, escaped quotes, and embedded newlines
+ok 135 - CSV parser preserves quoted commas, escaped quotes, and embedded newlines
+  ---
+  duration_ms: 1.80405
+  type: 'test'
+  ...
+# Subtest: flat XML parser reads configured row elements and rejects entity expansion and nested fields
+ok 136 - flat XML parser reads configured row elements and rejects entity expansion and nested fields
+  ---
+  duration_ms: 1.150932
+  type: 'test'
+  ...
+# Subtest: file connector reads only through a trusted repository reference and parses CSV and JSON
+ok 137 - file connector reads only through a trusted repository reference and parses CSV and JSON
+  ---
+  duration_ms: 1.381781
+  type: 'test'
+  ...
+# Subtest: file connector parses XML and fails closed for XLSX without an approved parser
+ok 138 - file connector parses XML and fails closed for XLSX without an approved parser
+  ---
+  duration_ms: 0.498645
+  type: 'test'
+  ...
+# Subtest: REST connector enforces HTTPS hostname allowlist, paging, watermark, and credential boundary
+ok 139 - REST connector enforces HTTPS hostname allowlist, paging, watermark, and credential boundary
+  ---
+  duration_ms: 2.610941
+  type: 'test'
+  ...
+# Subtest: SQL connector uses parameterized CAP SELECT queries and bounded cursor paging
+ok 140 - SQL connector uses parameterized CAP SELECT queries and bounded cursor paging
+  ---
+  duration_ms: 1.582945
+  type: 'test'
+  ...
+# Subtest: SAP adapter reuses the existing read-only OData collection client and configured entity paths
+ok 141 - SAP adapter reuses the existing read-only OData collection client and configured entity paths
+  ---
+  duration_ms: 0.466926
+  type: 'test'
+  ...
+# Subtest: all 6 canonical connector types implement IDataConnector and enforce SAP verified=false metadata
+ok 142 - all 6 canonical connector types implement IDataConnector and enforce SAP verified=false metadata
+  ---
+  duration_ms: 6.827553
+  type: 'test'
+  ...
+# Subtest: FileConnector parses CSV, OData V4 JSON, OData V2 JSON, and XML tabular exports
+ok 143 - FileConnector parses CSV, OData V4 JSON, OData V2 JSON, and XML tabular exports
+  ---
+  duration_ms: 0.801714
+  type: 'test'
+  ...
+# Subtest: schemaMapper proposes high-confidence mappings and transforms SAP DATS, OData dates, and formatted decimals
+ok 144 - schemaMapper proposes high-confidence mappings and transforms SAP DATS, OData dates, and formatted decimals
+  ---
+  duration_ms: 0.590203
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: syncSourceToCanonical runs full RAW -> CANONICAL -> CALCULATION pipeline for CSV File and Mock SAP connectors
+ok 145 - syncSourceToCanonical runs full RAW -> CANONICAL -> CALCULATION pipeline for CSV File and Mock SAP connectors
+  ---
+  duration_ms: 395.436065
+  type: 'test'
+  ...
+# Subtest: exposure aggregation keeps currencies separate and returns finite utilization
+ok 146 - exposure aggregation keeps currencies separate and returns finite utilization
+  ---
+  duration_ms: 1.218665
+  type: 'test'
+  ...
+# Subtest: portfolio KPI totals do not combine currencies
+ok 147 - portfolio KPI totals do not combine currencies
+  ---
+  duration_ms: 0.484683
+  type: 'test'
+  ...
+# Subtest: available credit preserves decimal precision without combining currencies
+ok 148 - available credit preserves decimal precision without combining currencies
+  ---
+  duration_ms: 0.199853
+  type: 'test'
+  ...
+# Subtest: portfolio totals fail explicitly when currency is absent
+ok 149 - portfolio totals fail explicitly when currency is absent
+  ---
+  duration_ms: 0.352684
+  type: 'test'
+  ...
+# Subtest: zero-limit currency groups have null utilization rather than infinity
+ok 150 - zero-limit currency groups have null utilization rather than infinity
+  ---
+  duration_ms: 0.245391
+  type: 'test'
+  ...
+# Subtest: SAP read-only mode blocks direct request preparation, submission, and approval after authorization
+ok 151 - SAP read-only mode blocks direct request preparation, submission, and approval after authorization
+  ---
+  duration_ms: 1.88329
+  type: 'test'
+  ...
+# Test support will move to package @cap-js/cds-test in @sap/cds v9.
+# Get ready and add a dependency to it:
+#   npm add -D @cap-js/cds-test
+# [cds] - loading server from { file: 'srv/server.js' }
+# [cds] - using auth strategy {
+#   kind: 'mocked',
+#   impl: 'node_modules/@sap/cds/lib/srv/middlewares/auth/basic-auth'
+# } 
+# [cds] - loaded model from 2 file(s):
+#   srv/service.cds
+#   db/schema.cds
+# [cds] - connect to db > sqlite { url: 'db.sqlite', database: ':memory:' }
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# [cds] - serving CreditService {
+#   impl: 'node_modules/@sap/cds/libx/_runtime/common/Service.js',
+#   path: '/odata/v4/credit'
+# }
+# [autonomous-scheduler] - {
+#   event: 'autonomous_scheduler_started',
+#   intervalMs: 300000,
+#   initialDelayMs: 30000
+# }
+# [cds] - server listening on { url: 'http://localhost:35861' }
+# [cds] - server launched in: 433.356ms
+# Subtest: Enterprise UI & AI Credit Assistance integration tests
+    # Subtest: <next>
+    ok 1 - <next>
+      ---
+      duration_ms: 516.597539
+      type: 'suite'
+      ...
+    # Subtest: Agent handles overdue invoices, high exposure, and collections recommendations with live data
+    ok 2 - Agent handles overdue invoices, high exposure, and collections recommendations with live data
+      ---
+      duration_ms: 15.981255
+      type: 'test'
+      ...
+    # Subtest: Agent handles evaluation of C001 (Aarav Components) with live deterministic calculations
+    ok 3 - Agent handles evaluation of C001 (Aarav Components) with live deterministic calculations
+      ---
+      duration_ms: 28.140284
+      type: 'test'
+      ...
+    1..3
+ok 152 - Enterprise UI & AI Credit Assistance integration tests
+  ---
+  duration_ms: 569.627693
+  type: 'test'
+  ...
+# Subtest: classifyThresholdStatus enforces exact deterministic FIN-FSCM-CR utilization boundaries
+ok 153 - classifyThresholdStatus enforces exact deterministic FIN-FSCM-CR utilization boundaries
+  ---
+  duration_ms: 0.609122
+  type: 'test'
+  ...
+# Subtest: calculatePartnerExposureSnapshot computes exact 4-category exposure, ageing buckets, and risk score
+ok 154 - calculatePartnerExposureSnapshot computes exact 4-category exposure, ageing buckets, and risk score
+  ---
+  duration_ms: 0.785889
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: getCanonicalPortfolioAnalytics and getBusinessPartnerCreditDossier return deterministic multi-dimensional rollups
+ok 155 - getCanonicalPortfolioAnalytics and getBusinessPartnerCreditDossier return deterministic multi-dimensional rollups
+  ---
+  duration_ms: 667.110325
+  type: 'test'
+  ...
+# Subtest: writes fetch and cache the App Router CSRF token with same-origin session credentials
+ok 156 - writes fetch and cache the App Router CSRF token with same-origin session credentials
+  ---
+  duration_ms: 29.757282
+  type: 'test'
+  ...
+# Subtest: GET requests do not acquire or attach a CSRF token
+ok 157 - GET requests do not acquire or attach a CSRF token
+  ---
+  duration_ms: 6.436595
+  type: 'test'
+  ...
+# Subtest: POST, PUT, PATCH, DELETE and multipart writes receive the token without overriding form boundaries
+ok 158 - POST, PUT, PATCH, DELETE and multipart writes receive the token without overriding form boundaries
+  ---
+  duration_ms: 9.29741
+  type: 'test'
+  ...
+# Subtest: a rejected CSRF token is invalidated but the failed write is never retried
+ok 159 - a rejected CSRF token is invalidated but the failed write is never retried
+  ---
+  duration_ms: 8.605598
+  type: 'test'
+  ...
+# Subtest: token acquisition failure prevents a write from being submitted
+ok 160 - token acquisition failure prevents a write from being submitted
+  ---
+  duration_ms: 4.590019
+  type: 'test'
+  ...
+# Subtest: standalone loopback CAP development allows role-protected writes without an App Router token
+ok 161 - standalone loopback CAP development allows role-protected writes without an App Router token
+  ---
+  duration_ms: 4.805521
+  type: 'test'
+  ...
+# Subtest: approval view hides ineligible decisions and renders persisted decision audit
+ok 162 - approval view hides ineligible decisions and renders persisted decision audit
+  ---
+  duration_ms: 29.77516
+  type: 'test'
+  ...
+# Subtest: request form shows local workflow only and explains SAP read-only mode
+ok 163 - request form shows local workflow only and explains SAP read-only mode
+  ---
+  duration_ms: 4.058564
+  type: 'test'
+  ...
+# Subtest: customer view displays approval history alongside payments and open items
+ok 164 - customer view displays approval history alongside payments and open items
+  ---
+  duration_ms: 2.419663
+  type: 'test'
+  ...
+# Subtest: monitoring view offers recovery only for eligible runs to operators
+ok 165 - monitoring view offers recovery only for eligible runs to operators
+  ---
+  duration_ms: 3.297272
+  type: 'test'
+  ...
+# Subtest: agent view hides proposal submission for users without request permission
+ok 166 - agent view hides proposal submission for users without request permission
+  ---
+  duration_ms: 2.846139
+  type: 'test'
+  ...
+# Subtest: assistant view labels provider and data provenance and renders workflow steps as preview-only
+ok 167 - assistant view labels provider and data provenance and renders workflow steps as preview-only
+  ---
+  duration_ms: 2.910427
+  type: 'test'
+  ...
+# Subtest: API helpers use authenticated existing audit and recovery routes
+ok 168 - API helpers use authenticated existing audit and recovery routes
+  ---
+  duration_ms: 24.361447
+  type: 'test'
+  ...
+# Subtest: credit-request API helper reuses a key across failure and rotates it after success
+ok 169 - credit-request API helper reuses a key across failure and rotates it after success
+  ---
+  duration_ms: 9.258878
+  type: 'test'
+  ...
+# Subtest: HANA monitoring concurrency requires explicitly enabled disposable HDI
+ok 170 - HANA monitoring concurrency requires explicitly enabled disposable HDI # SKIP requires CREDIT_GUARD_HANA_INTEGRATION=1 and CREDIT_GUARD_HANA_TEST_DISPOSABLE=1
+  ---
+  duration_ms: 0.525405
+  type: 'test'
+  ...
+# Subtest: connector manager validates capabilities, enabled scope, incremental mode, and pages
+ok 171 - connector manager validates capabilities, enabled scope, incremental mode, and pages
+  ---
+  duration_ms: 1.427801
+  type: 'test'
+  ...
+# Subtest: complete ingestion maps canonical records, persists exact source values and promotes atomically
+ok 172 - complete ingestion maps canonical records, persists exact source values and promotes atomically
+  ---
+  duration_ms: 5.268486
+  type: 'test'
+  ...
+# Subtest: failed retrieval is recorded and retains the previously promoted snapshot
+ok 173 - failed retrieval is recorded and retains the previously promoted snapshot
+  ---
+  duration_ms: 307.899224
+  type: 'test'
+  ...
+# Subtest: conflicting source identities are partial and cannot replace the active snapshot
+ok 174 - conflicting source identities are partial and cannot replace the active snapshot
+  ---
+  duration_ms: 2.044745
+  type: 'test'
+  ...
+# Subtest: conflicting canonical customer identities are rejected without an approved crosswalk
+ok 175 - conflicting canonical customer identities are rejected without an approved crosswalk
+  ---
+  duration_ms: 0.932491
+  type: 'test'
+  ...
+# Subtest: disabled sources and unauthorized callers cannot start ingestion
+ok 176 - disabled sources and unauthorized callers cannot start ingestion
+  ---
+  duration_ms: 0.532597
+  type: 'test'
+  ...
+# Subtest: idempotent requests reuse their run without repeating connector reads
+ok 177 - idempotent requests reuse their run without repeating connector reads
+  ---
+  duration_ms: 0.821804
+  type: 'test'
+  ...
+# Subtest: transient connector errors are retried within a bounded policy
+ok 178 - transient connector errors are retried within a bounded policy
+  ---
+  duration_ms: 100.791306
+  type: 'test'
+  ...
+# Subtest: multi-page retrieval follows unique cursors and promotes only after completion
+ok 179 - multi-page retrieval follows unique cursors and promotes only after completion
+  ---
+  duration_ms: 1.297435
+  type: 'test'
+  ...
+# Subtest: cancelled ingestion is recorded and releases its source lock
+ok 180 - cancelled ingestion is recorded and releases its source lock
+  ---
+  duration_ms: 1.052324
+  type: 'test'
+  ...
+# Subtest: ingestion deadline stops waiting for an unresponsive connector and records failure
+ok 181 - ingestion deadline stops waiting for an unresponsive connector and records failure
+  ---
+  duration_ms: 52.00921
+  type: 'test'
+  ...
+# Subtest: incremental retrieval cannot replace a complete snapshot without merge semantics
+ok 182 - incremental retrieval cannot replace a complete snapshot without merge semantics
+  ---
+  duration_ms: 1.846405
+  type: 'test'
+  ...
+# Subtest: record limits and concurrent source runs fail closed
+ok 183 - record limits and concurrent source runs fail closed
+  ---
+  duration_ms: 2.471482
+  type: 'test'
+  ...
+# Subtest: stale but complete source data is retained as a warning snapshot and is not decision eligible
+ok 184 - stale but complete source data is retained as a warning snapshot and is not decision eligible
+  ---
+  duration_ms: 0.77294
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: previewCanonicalLimitChange calculates deterministic before/after utilization and SAP target metadata
+ok 185 - previewCanonicalLimitChange calculates deterministic before/after utilization and SAP target metadata
+  ---
+  duration_ms: 376.611183
+  type: 'test'
+  ...
+#   > init from db/data/credit-Payments.csv 
+#   > init from db/data/credit-OpenItems.csv 
+#   > init from db/data/credit-Customers.csv 
+# /> successfully deployed to in-memory database. 
+# Subtest: workflow state machine: DRAFT -> PENDING_APPROVAL -> APPROVED -> SYNCED_TO_SAP recalculates snapshot and enforces separation of duties
+ok 186 - workflow state machine: DRAFT -> PENDING_APPROVAL -> APPROVED -> SYNCED_TO_SAP recalculates snapshot and enforces separation of duties
+  ---
+  duration_ms: 220.6233
+  type: 'test'
+  ...
+# Subtest: provider abstraction normalizes tool calls without exposing credentials
+ok 187 - provider abstraction normalizes tool calls without exposing credentials
+  ---
+  duration_ms: 1.621104
+  type: 'test'
+  ...
+# Subtest: provider reports bounded timeouts and classifies service failures
+ok 188 - provider reports bounded timeouts and classifies service failures
+  ---
+  duration_ms: 5.715162
+  type: 'test'
+  ...
+# Subtest: timeout configuration accepts positive bounded values and defaults only when absent
+ok 189 - timeout configuration accepts positive bounded values and defaults only when absent
+  ---
+  duration_ms: 0.323359
+  type: 'test'
+  ...
+# Subtest: timeout configuration rejects empty, non-positive, non-integer, malformed and excessive values
+ok 190 - timeout configuration rejects empty, non-positive, non-integer, malformed and excessive values
+  ---
+  duration_ms: 0.351812
+  type: 'test'
+  ...
+# Subtest: provider rejects malformed JSON without exposing the parser error
+ok 191 - provider rejects malformed JSON without exposing the parser error
+  ---
+  duration_ms: 0.296659
+  type: 'test'
+  ...
+# Subtest: provider rejects invalid top-level and content block structures
+ok 192 - provider rejects invalid top-level and content block structures
+  ---
+  duration_ms: 0.919522
+  type: 'test'
+  ...
+# Subtest: provider classifies authentication, rate-limit and other HTTP errors without reading bodies
+ok 193 - provider classifies authentication, rate-limit and other HTTP errors without reading bodies
+  ---
+  duration_ms: 0.955557
+  type: 'test'
+  ...
+# Subtest: provider sanitizes network failures
+ok 194 - provider sanitizes network failures
+  ---
+  duration_ms: 0.324682
+  type: 'test'
+  ...
+# Subtest: Gemini provider uses the official SDK contract and normalizes forced planning calls
+ok 195 - Gemini provider uses the official SDK contract and normalizes forced planning calls
+  ---
+  duration_ms: 0.79304
+  type: 'test'
+  ...
+# Subtest: Gemini provider selection preserves Anthropic and handles missing configuration
+ok 196 - Gemini provider selection preserves Anthropic and handles missing configuration
+  ---
+  duration_ms: 0.464323
+  type: 'test'
+  ...
+# Subtest: Gemini provider categorizes authentication, quota, service and malformed-response errors safely
+ok 197 - Gemini provider categorizes authentication, quota, service and malformed-response errors safely
+  ---
+  duration_ms: 0.59445
+  type: 'test'
+  ...
+# Subtest: Gemini timeout aborts the SDK request and connectivity check uses no tools
+ok 198 - Gemini timeout aborts the SDK request and connectivity check uses no tools
+  ---
+  duration_ms: 5.48898
+  type: 'test'
+  ...
+# Subtest: scenario 1: customer analysis uses the calculated customer tool and records execution
+ok 199 - scenario 1: customer analysis uses the calculated customer tool and records execution
+  ---
+  duration_ms: 7.884487
+  type: 'test'
+  ...
+# Subtest: scenario 2: customers above 90 percent utilization are filtered from calculated data
+ok 200 - scenario 2: customers above 90 percent utilization are filtered from calculated data
+  ---
+  duration_ms: 0.958922
+  type: 'test'
+  ...
+# Subtest: scenario 3: overdue high-risk customer is identifiable from risk fields and flags
+ok 201 - scenario 3: overdue high-risk customer is identifiable from risk fields and flags
+  ---
+  duration_ms: 0.508069
+  type: 'test'
+  ...
+# Subtest: scenario 4: explanation is grounded in the customer exposure tool result
+ok 202 - scenario 4: explanation is grounded in the customer exposure tool result
+  ---
+  duration_ms: 1.292717
+  type: 'test'
+  ...
+# Subtest: scenario 5: limit increase proposal is validated without creating a request
+ok 203 - scenario 5: limit increase proposal is validated without creating a request
+  ---
+  duration_ms: 1.206196
+  type: 'test'
+  ...
+# Subtest: scenario 6: submission requires a separate human action; agent exposes no decision tool
+ok 204 - scenario 6: submission requires a separate human action; agent exposes no decision tool
+  ---
+  duration_ms: 0.998662
+  type: 'test'
+  ...
+# Subtest: Mock SAP API extracts synthetic records, updates portfolio, and returns persisted monitoring findings
+ok 205 - Mock SAP API extracts synthetic records, updates portfolio, and returns persisted monitoring findings
+  ---
+  duration_ms: 1810.138738
+  type: 'test'
+  ...
+# Subtest: Mock SAP connector registers a synthetic-only source and validates each fixture entity
+ok 206 - Mock SAP connector registers a synthetic-only source and validates each fixture entity
+  ---
+  duration_ms: 3.114916
+  type: 'test'
+  ...
+# Subtest: Mock SAP connector rejects altered source identity and incremental reads
+ok 207 - Mock SAP connector rejects altered source identity and incremental reads
+  ---
+  duration_ms: 0.352053
+  type: 'test'
+  ...
+# Subtest: Mock SAP Generated connector metadata, registration and production safety
+ok 208 - Mock SAP Generated connector metadata, registration and production safety
+  ---
+  duration_ms: 858.092997
+  type: 'test'
+  ...
+# Subtest: Mock SAP Generated API routes enforce role access and synthetic labeling
+ok 209 - Mock SAP Generated API routes enforce role access and synthetic labeling
+  ---
+  duration_ms: 18.635584
+  type: 'test'
+  ...
+# Subtest: Mock SAP Generated extraction ingests 300 BP dataset, persists connector quality issues, and projects atomically without altering demo rows
+ok 210 - Mock SAP Generated extraction ingests 300 BP dataset, persists connector quality issues, and projects atomically without altering demo rows
+  ---
+  duration_ms: 2083.534754
+  type: 'test'
+  ...
+# Subtest: Mock SAP extraction projects business records atomically, supports dashboard and monitoring, and preserves existing limits
+ok 211 - Mock SAP extraction projects business records atomically, supports dashboard and monitoring, and preserves existing limits
+  ---
+  duration_ms: 12.583471
+  type: 'test'
+  ...
+# Subtest: Mock SAP projection rejects an existing customer ID collision without modifying it
+ok 212 - Mock SAP projection rejects an existing customer ID collision without modifying it
+  ---
+  duration_ms: 4.866859
+  type: 'test'
+  ...
+# Subtest: latest monitoring lookups normalize empty single-row results
+ok 213 - latest monitoring lookups normalize empty single-row results
+  ---
+  duration_ms: 682.672855
+  type: 'test'
+  ...
+# Subtest: monitoring routes enforce reader, operator, and scheduler identities
+ok 214 - monitoring routes enforce reader, operator, and scheduler identities
+  ---
+  duration_ms: 927.204221
+  type: 'test'
+  ...
+# Subtest: scheduled executions are idempotent and preserve the first persisted result
+ok 215 - scheduled executions are idempotent and preserve the first persisted result
+  ---
+  duration_ms: 9.105906
+  type: 'test'
+  ...
+# Subtest: monitoring findings and alerts are persisted, deduplicated, and auditable
+ok 216 - monitoring findings and alerts are persisted, deduplicated, and auditable
+  ---
+  duration_ms: 1975.447487
+  type: 'test'
+  ...
+# Subtest: monitoring rejects malformed job slots and invalid alert status filters
+ok 217 - monitoring rejects malformed job slots and invalid alert status filters
+  ---
+  duration_ms: 4.324027
+  type: 'test'
+  ...
+# Subtest: monitoring does not create, approve, or change credit requests
+ok 218 - monitoring does not create, approve, or change credit requests
+  ---
+  duration_ms: 5.617036
+  type: 'test'
+  ...
+# Subtest: monitoring produces deterministic customer findings and portfolio counts
+ok 219 - monitoring produces deterministic customer findings and portfolio counts
+  ---
+  duration_ms: 1.646924
+  type: 'test'
+  ...
+# Subtest: empty complete portfolios are successful and report zero findings
+ok 220 - empty complete portfolios are successful and report zero findings
+  ---
+  duration_ms: 0.180733
+  type: 'test'
+  ...
+# Subtest: source freshness is unknown unless an upstream data timestamp is supplied
+ok 221 - source freshness is unknown unless an upstream data timestamp is supplied
+  ---
+  duration_ms: 0.117638
+  type: 'test'
+  ...
+# Subtest: fresh complete non-empty snapshots are eligible to resolve absent alert conditions
+ok 222 - fresh complete non-empty snapshots are eligible to resolve absent alert conditions
+  ---
+  duration_ms: 0.109346
+  type: 'test'
+  ...
+# Subtest: old source timestamps mark monitoring stale without claiming healthy data
+ok 223 - old source timestamps mark monitoring stale without claiming healthy data
+  ---
+  duration_ms: 0.116466
+  type: 'test'
+  ...
+# Subtest: explicitly incomplete provider snapshots are reported partial
+ok 224 - explicitly incomplete provider snapshots are reported partial
+  ---
+  duration_ms: 0.145961
+  type: 'test'
+  ...
+# Subtest: invalid or incomplete snapshots fail instead of appearing healthy
+ok 225 - invalid or incomplete snapshots fail instead of appearing healthy
+  ---
+  duration_ms: 0.23117
+  type: 'test'
+  ...
+# Subtest: monitoring requires the authenticated reader role
+ok 226 - monitoring requires the authenticated reader role
+  ---
+  duration_ms: 0.240885
+  type: 'test'
+  ...
+# Subtest: provider failures remain failures and are not converted into empty findings
+ok 227 - provider failures remain failures and are not converted into empty findings
+  ---
+  duration_ms: 0.232883
+  type: 'test'
+  ...
+# Subtest: ABAP provider output uses the existing deterministic analysis and connector timestamp
+ok 228 - ABAP provider output uses the existing deterministic analysis and connector timestamp
+  ---
+  duration_ms: 0.470923
+  type: 'test'
+  ...
+# Subtest: notification outbox retries transient delivery failures within a fixed bound
+ok 229 - notification outbox retries transient delivery failures within a fixed bound
+  ---
+  duration_ms: 2.120642
+  type: 'test'
+  ...
+# Subtest: notification outbox moves exhausted deliveries to a terminal failure
+ok 230 - notification outbox moves exhausted deliveries to a terminal failure
+  ---
+  duration_ms: 0.288447
+  type: 'test'
+  ...
+# Subtest: unknown, stale, partial, failed, and empty snapshots preserve active and acknowledged alerts
+ok 231 - unknown, stale, partial, failed, and empty snapshots preserve active and acknowledged alerts
+  ---
+  duration_ms: 1.305928
+  type: 'test'
+  ...
+# Subtest: failed retrieval marks its run failed without changing existing alerts
+ok 232 - failed retrieval marks its run failed without changing existing alerts
+  ---
+  duration_ms: 0.302327
+  type: 'test'
+  ...
+# Subtest: fresh complete non-empty snapshots resolve absent active and acknowledged alert conditions
+ok 233 - fresh complete non-empty snapshots resolve absent active and acknowledged alert conditions
+  ---
+  duration_ms: 0.635272
+  type: 'test'
+  ...
+# Subtest: store requires every resolution condition even if eligibility metadata is inconsistent
+ok 234 - store requires every resolution condition even if eligibility metadata is inconsistent
+  ---
+  duration_ms: 0.172582
+  type: 'test'
+  ...
+# Subtest: AI input is minimized to deterministic aggregate counts and rule conditions
+ok 235 - AI input is minimized to deterministic aggregate counts and rule conditions
+  ---
+  duration_ms: 0.482601
+  type: 'test'
+  ...
+# Subtest: unconfigured or unavailable AI produces a deterministic advisory summary
+ok 236 - unconfigured or unavailable AI produces a deterministic advisory summary
+  ---
+  duration_ms: 0.34347
+  type: 'test'
+  ...
+# Subtest: AI summaries receive only minimized signals and are explicitly advisory
+ok 237 - AI summaries receive only minimized signals and are explicitly advisory
+  ---
+  duration_ms: 0.251701
+  type: 'test'
+  ...
+# Subtest: malformed provider output falls back without exposing provider details
+ok 238 - malformed provider output falls back without exposing provider details
+  ---
+  duration_ms: 0.295627
+  type: 'test'
+  ...
+# Subtest: deterministic summaries remain based only on existing finding counts
+ok 239 - deterministic summaries remain based only on existing finding counts
+  ---
+  duration_ms: 0.223338
+  type: 'test'
+  ...
+# Subtest: monitoring requests persist as queued and duplicate scheduler slots reuse one run
+ok 240 - monitoring requests persist as queued and duplicate scheduler slots reuse one run
+  ---
+  duration_ms: 1.860227
+  type: 'test'
+  ...
+# Subtest: concurrent workers claim at most one portfolio run
+ok 241 - concurrent workers claim at most one portfolio run
+  ---
+  duration_ms: 5.702175
+  type: 'test'
+  ...
+# Subtest: transaction state is isolated until commit and restored after rollback
+ok 242 - transaction state is isolated until commit and restored after rollback
+  ---
+  duration_ms: 0.649263
+  type: 'test'
+  ...
+# Subtest: a failed claim between lock and run updates rolls back both rows
+ok 243 - a failed claim between lock and run updates rolls back both rows
+  ---
+  duration_ms: 0.502271
+  type: 'test'
+  ...
+# Subtest: null singleton lock fields permit the initial conditional claim
+ok 244 - null singleton lock fields permit the initial conditional claim
+  ---
+  duration_ms: 0.326414
+  type: 'test'
+  ...
+# Subtest: reclaimed claim rejects stale completion, failure, and requeue without side effects
+ok 245 - reclaimed claim rejects stale completion, failure, and requeue without side effects
+  ---
+  duration_ms: 1.432549
+  type: 'test'
+  ...
+# Subtest: a worker reclaims a run after its persisted lease expires
+ok 246 - a worker reclaims a run after its persisted lease expires
+  ---
+  duration_ms: 0.344632
+  type: 'test'
+  ...
+# Subtest: worker restart recovery handles expired pre-worker running leases
+ok 247 - worker restart recovery handles expired pre-worker running leases
+  ---
+  duration_ms: 0.278461
+  type: 'test'
+  ...
+# Subtest: operator recovery queues an eligible run instead of bypassing worker claims
+ok 248 - operator recovery queues an eligible run instead of bypassing worker claims
+  ---
+  duration_ms: 1.037601
+  type: 'test'
+  ...
+# Subtest: operator recovery is rejected after the bounded attempt count
+ok 249 - operator recovery is rejected after the bounded attempt count
+  ---
+  duration_ms: 0.776826
+  type: 'test'
+  ...
+# Subtest: worker completes a durable job and releases its portfolio lease
+ok 250 - worker completes a durable job and releases its portfolio lease
+  ---
+  duration_ms: 2.812329
+  type: 'test'
+  ...
+# Subtest: deadline cancellation prevents a late source response from completing the run
+ok 251 - deadline cancellation prevents a late source response from completing the run
+  ---
+  duration_ms: 91.315636
+  type: 'test'
+  ...
+# Subtest: advisory timeout falls back without changing a completed deterministic run
+ok 252 - advisory timeout falls back without changing a completed deterministic run
+  ---
+  duration_ms: 10.663859
+  type: 'test'
+  ...
+# Subtest: worker timeout configuration rejects invalid and excessive values
+ok 253 - worker timeout configuration rejects invalid and excessive values
+  ---
+  duration_ms: 0.283089
+  type: 'test'
+  ...
+# Subtest: worker shutdown with no active job drains immediately
+ok 254 - worker shutdown with no active job drains immediately
+  ---
+  duration_ms: 0.394257
+  type: 'test'
+  ...
+# Subtest: shutdown before polling leaves queued jobs unclaimed and stops future claims
+ok 255 - shutdown before polling leaves queued jobs unclaimed and stops future claims
+  ---
+  duration_ms: 0.904379
+  type: 'test'
+  ...
+# Subtest: shutdown aborts an active source read, requeues safely, and does not resolve alerts
+ok 256 - shutdown aborts an active source read, requeues safely, and does not resolve alerts
+  ---
+  duration_ms: 1.296914
+  type: 'test'
+  ...
+# Subtest: shutdown during completion waits for the atomic completion transaction
+ok 257 - shutdown during completion waits for the atomic completion transaction
+  ---
+  duration_ms: 0.615141
+  type: 'test'
+  ...
+# Subtest: shutdown cancels advisory generation without delaying deterministic completion
+ok 258 - shutdown cancels advisory generation without delaying deterministic completion
+  ---
+  duration_ms: 0.636293
+  type: 'test'
+  ...
+# [monitoring-worker] - { event: 'monitoring_worker_drain_timeout', timeoutMs: 15 }
+# Subtest: drain timeout retains the lease and an expired-lease restart rejects stale completion
+ok 259 - drain timeout retains the lease and an expired-lease restart rejects stale completion
+  ---
+  duration_ms: 16.963327
+  type: 'test'
+  ...
+# Subtest: shutdown drain timeout setting is bounded
+ok 260 - shutdown drain timeout setting is bounded
+  ---
+  duration_ms: 0.116356
+  type: 'test'
+  ...
+# Subtest: exposure includes unpaid invoices and sales orders but excludes closed items
+ok 261 - exposure includes unpaid invoices and sales orders but excludes closed items
+  ---
+  duration_ms: 1.005693
+  type: 'test'
+  ...
+# Subtest: warning, breach, and critical classifications use inclusive demo thresholds
+ok 262 - warning, breach, and critical classifications use inclusive demo thresholds
+  ---
+  duration_ms: 0.355128
+  type: 'test'
+  ...
+# Subtest: zero limit requires manual review and never returns non-finite utilization
+ok 263 - zero limit requires manual review and never returns non-finite utilization
+  ---
+  duration_ms: 0.248246
+  type: 'test'
+  ...
+# Subtest: overdue amount is based on due date and unpaid credit-consuming status
+ok 264 - overdue amount is based on due date and unpaid credit-consuming status
+  ---
+  duration_ms: 0.153432
+  type: 'test'
+  ...
+# Subtest: overdue invoice count uses due dates and excludes sales orders and paid items
+ok 265 - overdue invoice count uses due dates and excludes sales orders and paid items
+  ---
+  duration_ms: 0.114803
+  type: 'test'
+  ...
+# Subtest: overdue risk uses a strict greater-than 30 percent boundary
+ok 266 - overdue risk uses a strict greater-than 30 percent boundary
+  ---
+  duration_ms: 0.095946
+  type: 'test'
+  ...
+# Subtest: paid and closed items do not consume credit and missing or invalid due dates are not overdue
+ok 267 - paid and closed items do not consume credit and missing or invalid due dates are not overdue
+  ---
+  duration_ms: 0.117037
+  type: 'test'
+  ...
+# Subtest: identical duplicate open-item IDs are counted once and conflicting duplicates fail
+ok 268 - identical duplicate open-item IDs are counted once and conflicting duplicates fail
+  ---
+  duration_ms: 0.317691
+  type: 'test'
+  ...
+# Subtest: one open-item ID cannot be assigned across multiple customers
+ok 269 - one open-item ID cannot be assigned across multiple customers
+  ---
+  duration_ms: 0.273374
+  type: 'test'
+  ...
+# Subtest: negative or invalid amounts fail and mixed currencies are never combined
+ok 270 - negative or invalid amounts fail and mixed currencies are never combined
+  ---
+  duration_ms: 0.509091
+  type: 'test'
+  ...
+# Subtest: invalid credit limits fail instead of producing invalid utilization
+ok 271 - invalid credit limits fail instead of producing invalid utilization
+  ---
+  duration_ms: 0.199231
+  type: 'test'
+  ...
+# Subtest: stale review compares date-only values at the twelve-month boundary
+ok 272 - stale review compares date-only values at the twelve-month boundary
+  ---
+  duration_ms: 0.088313
+  type: 'test'
+  ...
+# Subtest: stale review clamps leap-day calendar subtraction to the prior month end
+ok 273 - stale review clamps leap-day calendar subtraction to the prior month end
+  ---
+  duration_ms: 0.050156
+  type: 'test'
+  ...
+# Subtest: missing or invalid review dates do not add a stale-review flag
+ok 274 - missing or invalid review dates do not add a stale-review flag
+  ---
+  duration_ms: 0.079941
+  type: 'test'
+  ...
+# Subtest: approval routing uses the existing percentage OR fixed-amount thresholds
+ok 275 - approval routing uses the existing percentage OR fixed-amount thresholds
+  ---
+  duration_ms: 0.054242
+  type: 'test'
+  ...
+# Subtest: approval hierarchy allows Finance Head escalation but not reverse escalation
+ok 276 - approval hierarchy allows Finance Head escalation but not reverse escalation
+  ---
+  duration_ms: 0.044067
+  type: 'test'
+  ...
+# Subtest: PRNG and generator determinism: identical seed and options produce byte-for-byte identical CSVs and expected-results.json
+ok 277 - PRNG and generator determinism: identical seed and options produce byte-for-byte identical CSVs and expected-results.json
+  ---
+  duration_ms: 28.721952
+  type: 'test'
+  ...
+# Subtest: SAP field formats: 10-digit zero-padded PARTNER/KUNNR, YYYYMMDD dates, SHKZG S/H, BLART RV/DG/DZ, and XBLOCKED=X only on blocked scenario
+ok 278 - SAP field formats: 10-digit zero-padded PARTNER/KUNNR, YYYYMMDD dates, SHKZG S/H, BLART RV/DG/DZ, and XBLOCKED=X only on blocked scenario
+  ---
+  duration_ms: 10.334299
+  type: 'test'
+  ...
+# Subtest: Scenario coverage and directory placement: all 14 scenarios exist, only CSVs under db/sap-sim/data, and expected-results.json + SYNTHETIC_NOTICE.txt under tests/fixtures/sap-sim
+ok 279 - Scenario coverage and directory placement: all 14 scenarios exist, only CSVs under db/sap-sim/data, and expected-results.json + SYNTHETIC_NOTICE.txt under tests/fixtures/sap-sim
+  ---
+  duration_ms: 10.733303
+  type: 'test'
+  ...
+# Subtest: Generator CLI with default arguments writes expected-results.json and SYNTHETIC_NOTICE.txt to tmp/sap-sim/ and leaves tracked fixtures unchanged
+ok 280 - Generator CLI with default arguments writes expected-results.json and SYNTHETIC_NOTICE.txt to tmp/sap-sim/ and leaves tracked fixtures unchanged
+  ---
+  duration_ms: 38.504437
+  type: 'test'
+  ...
+# Subtest: Explicit fixture regeneration command to a temp path is byte-identical to committed fixtures after LF normalization
+ok 281 - Explicit fixture regeneration command to a temp path is byte-identical to committed fixtures after LF normalization
+  ---
+  duration_ms: 35.837737
+  type: 'test'
+  ...
+# Subtest: Extraction, projection, and monitoring comparison across all 300 generated customers and 13 demo customers
+ok 282 - Extraction, projection, and monitoring comparison across all 300 generated customers and 13 demo customers
+  ---
+  duration_ms: 3379.459256
+  type: 'test'
+  ...
+# Subtest: Production gate returns 403 and does not register the connector when NODE_ENV/CDS_ENV is production without CREDIT_GUARD_SAP_SIM=true
+ok 283 - Production gate returns 403 and does not register the connector when NODE_ENV/CDS_ENV is production without CREDIT_GUARD_SAP_SIM=true
+  ---
+  duration_ms: 810.706221
+  type: 'test'
+  ...
+# Subtest: Generator defaults seed to 42 and today to current UTC date when called without arguments
+ok 284 - Generator defaults seed to 42 and today to current UTC date when called without arguments
+  ---
+  duration_ms: 897.56627
+  type: 'test'
+  ...
+# Subtest: Startup hook is inert without CREDIT_GUARD_SAP_SIM_AUTOLOAD=true, and load on empty db/sap-sim/data populates 312 customers idempotently
+ok 285 - Startup hook is inert without CREDIT_GUARD_SAP_SIM_AUTOLOAD=true, and load on empty db/sap-sim/data populates 312 customers idempotently
+  ---
+  duration_ms: 2927.567486
+  type: 'test'
+  ...
+# Subtest: RBAC and request validation: non-admin gets 403, cds.User.Privileged gets 403, body or query options rejected with 400
+ok 286 - RBAC and request validation: non-admin gets 403, cds.User.Privileged gets 403, body or query options rejected with 400
+  ---
+  duration_ms: 6.276283
+  type: 'test'
+  ...
+# Subtest: Concurrent loads return one 200 and one 409
+ok 287 - Concurrent loads return one 200 and one 409
+  ---
+  duration_ms: 727.649856
+  type: 'test'
+  ...
+# Subtest: Missing scripts/generate-sap-sim-data.js returns 503 and does not crash module load or server startup
+ok 288 - Missing scripts/generate-sap-sim-data.js returns 503 and does not crash module load or server startup
+  ---
+  duration_ms: 0.682294
+  type: 'test'
+  ...
+# Subtest: Gate off returns 403 matching existing generated routes, and startup hook populates when CREDIT_GUARD_SAP_SIM_AUTOLOAD=true
+ok 289 - Gate off returns 403 matching existing generated routes, and startup hook populates when CREDIT_GUARD_SAP_SIM_AUTOLOAD=true
+  ---
+  duration_ms: 3027.20319
+  type: 'test'
+  ...
+# Subtest: buildDecisionEligibleExplanation dynamically formats counts and states when decisionEligible is true or false without hard-coded numbers
+ok 290 - buildDecisionEligibleExplanation dynamically formats counts and states when decisionEligible is true or false without hard-coded numbers
+  ---
+  duration_ms: 0.33013
+  type: 'test'
+  ...
+# Subtest: Forced 500 error in POST /api/mock-sap-generated/load returns generic safe error message and conceals internal details
+ok 291 - Forced 500 error in POST /api/mock-sap-generated/load returns generic safe error message and conceals internal details
+  ---
+  duration_ms: 690.816146
+  type: 'test'
+  ...
+# Subtest: source registry routes require CreditAdmin and persist metadata references only
+ok 292 - source registry routes require CreditAdmin and persist metadata references only
+  ---
+  duration_ms: 881.664326
+  type: 'test'
+  ...
+# Subtest: ingestion status is readable and unconfigured sources create explicit failed audit runs
+ok 293 - ingestion status is readable and unconfigured sources create explicit failed audit runs
+  ---
+  duration_ms: 36.005572
+  type: 'test'
+  ...
+# Subtest: source registry accepts approved source metadata and owns timestamps
+ok 294 - source registry accepts approved source metadata and owns timestamps
+  ---
+  duration_ms: 1.396474
+  type: 'test'
+  ...
+# Subtest: source registry rejects unknown types, malformed metadata, and embedded configuration values
+ok 295 - source registry rejects unknown types, malformed metadata, and embedded configuration values
+  ---
+  duration_ms: 0.41599
+  type: 'test'
+  ...
+# Subtest: source registry allows reference-only auth, rejects duplicate IDs, and does not expose credentials
+ok 296 - source registry allows reference-only auth, rejects duplicate IDs, and does not expose credentials
+  ---
+  duration_ms: 0.153862
+  type: 'test'
+  ...
+# Subtest: source registry rejects unknown, disabled, or unsupported selections
+ok 297 - source registry rejects unknown, disabled, or unsupported selections
+  ---
+  duration_ms: 0.135145
+  type: 'test'
+  ...
+# Subtest: source registry updates enabled state and returns defensive copies
+ok 298 - source registry updates enabled state and returns defensive copies
+  ---
+  duration_ms: 0.272783
+  type: 'test'
+  ...
+# Subtest: canonical customer mapping preserves source IDs and provenance
+ok 299 - canonical customer mapping preserves source IDs and provenance
+  ---
+  duration_ms: 0.481098
+  type: 'test'
+  ...
+# Subtest: canonical credit account mapping preserves decimal text and currency
+ok 300 - canonical credit account mapping preserves decimal text and currency
+  ---
+  duration_ms: 0.298411
+  type: 'test'
+  ...
+# Subtest: canonical invoice and sales order mapping validates amounts without arithmetic
+ok 301 - canonical invoice and sales order mapping validates amounts without arithmetic
+  ---
+  duration_ms: 0.348438
+  type: 'test'
+  ...
+# Subtest: canonical payment and allocation mapping preserves exact amounts and references
+ok 302 - canonical payment and allocation mapping preserves exact amounts and references
+  ---
+  duration_ms: 0.254174
+  type: 'test'
+  ...
+# Subtest: mapping reports missing mandatory fields and does not fabricate optional source values
+ok 303 - mapping reports missing mandatory fields and does not fabricate optional source values
+  ---
+  duration_ms: 0.333465
+  type: 'test'
+  ...
+# Subtest: canonical validation rejects invalid decimal values, currencies, and calendar dates
+ok 304 - canonical validation rejects invalid decimal values, currencies, and calendar dates
+  ---
+  duration_ms: 0.178119
+  type: 'test'
+  ...
+# Subtest: canonical validation requires complete provenance and preserves optional missing timestamps
+ok 305 - canonical validation requires complete provenance and preserves optional missing timestamps
+  ---
+  duration_ms: 0.116537
+  type: 'test'
+  ...
+# Subtest: source identity detection distinguishes exact duplicates from conflicts
+ok 306 - source identity detection distinguishes exact duplicates from conflicts
+  ---
+  duration_ms: 0.24456
+  type: 'test'
+  ...
+# Subtest: existing local and ABAP source selection contract remains unchanged
+ok 307 - existing local and ABAP source selection contract remains unchanged
+  ---
+  duration_ms: 0.13225
+  type: 'test'
+  ...
+# Subtest: all 6 SAP BTP & HANA CDS sections reside exclusively within \#simulator-panel in index.html
+ok 308 - all 6 SAP BTP & HANA CDS sections reside exclusively within \#simulator-panel in index.html
+  ---
+  duration_ms: 3.021644
+  type: 'test'
+  ...
+# Subtest: CSS rules in layout.css enforce strict tab-panel display isolation with !important
+ok 309 - CSS rules in layout.css enforce strict tab-panel display isolation with !important
+  ---
+  duration_ms: 0.646789
+  type: 'test'
+  ...
+# Subtest: main.js switchTab cleanly removes any inline display style from all tab panels
+ok 310 - main.js switchTab cleanly removes any inline display style from all tab panels
+  ---
+  duration_ms: 0.551665
+  type: 'test'
+  ...
+# Subtest: fixed viewport layout locks global page scroll and delegates vertical scrolling to .workspace-main
+ok 311 - fixed viewport layout locks global page scroll and delegates vertical scrolling to .workspace-main
+  ---
+  duration_ms: 1.548063
+  type: 'test'
+  ...
+# Subtest: KPI cards preserve all four metrics and apply refined enterprise typography and pastel themes
+ok 312 - KPI cards preserve all four metrics and apply refined enterprise typography and pastel themes
+  ---
+  duration_ms: 0.613929
+  type: 'test'
+  ...
+# Subtest: Workspace navigation separates AI Credit Assistance (\#chat-panel) and Credit Overview (\#overview-panel) in exact 6-tab order
+ok 313 - Workspace navigation separates AI Credit Assistance (\#chat-panel) and Credit Overview (\#overview-panel) in exact 6-tab order
+  ---
+  duration_ms: 1.247559
+  type: 'test'
+  ...
+1..313
+# tests 328
+# suites 1
+# pass 325
+# fail 1
+# cancelled 0
+# skipped 2
+# todo 0
+# duration_ms 26265.174741
+Error: Process completed with exit code 1.
+0s
+0s
+0s
+0s
+0s
+1s
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Se
