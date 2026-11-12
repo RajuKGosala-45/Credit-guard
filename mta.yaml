@@ -28,6 +28,7 @@ modules:
       NODE_ENV: production
       CREDIT_GUARD_AGENT_DATA_SOURCE: local
       CREDIT_GUARD_SYNTHETIC_DEMO: "true"
+      CREDIT_GUARD_DEV_DEFAULT_USER: administrator
       CDS_FEATURES_TEST_DATA: "false"
       ABAP_HTTP_TIMEOUT_MS: "10000"
       ABAP_MAX_PAGES: "20"
@@ -40,7 +41,6 @@ modules:
       - name: credit-guard-db
       - name: credit-guard-xsuaa
       - name: credit-guard-destination
-      - name: credit-guard-job-scheduler
     provides:
       - name: credit-guard-srv-api
         properties:
@@ -55,14 +55,13 @@ modules:
       memory: 256M
       disk-quota: 512M
     requires:
-      - name: credit-guard-xsuaa
       - name: credit-guard-destination
       - name: credit-guard-srv-api
         group: destinations
         properties:
           name: credit-guard-srv-api
           url: ~{url}
-          forwardAuthToken: true
+          forwardAuthToken: false
 
 resources:
   - name: credit-guard-db
@@ -85,12 +84,6 @@ resources:
     parameters:
       service: destination
       service-plan: lite
-
-  - name: credit-guard-job-scheduler
-    type: org.cloudfoundry.managed-service
-    parameters:
-      service: jobscheduler
-      service-plan: standard
 
 build-parameters:
   before-all:

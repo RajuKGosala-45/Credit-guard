@@ -1,6 +1,6 @@
 {
   "welcomeFile": "/credit/index.html",
-  "authenticationMethod": "route",
+  "authenticationMethod": "none",
   "logout": {
     "logoutEndpoint": "/logout",
     "logoutPage": "/"
@@ -17,8 +17,8 @@
       "source": "^/(.*)$",
       "target": "/$1",
       "destination": "credit-guard-srv-api",
-      "authenticationType": "xsuaa",
-      "csrfProtection": true
+      "authenticationType": "none",
+      "csrfProtection": false
     }
   ]
 }

@@ -162,7 +162,7 @@ test('MTA selects explicit HANA synthetic demo mode and includes HDI table data 
   assert.match(packageJson.scripts['build:cf'], /contentHdbtabledata=true/);
 });
 
-test('App Router protects application routes and exposes only health routes anonymously', () => {
+test('App Router exposes application routes directly for demo deployment', () => {
   const routerPackage = JSON.parse(readFileSync(path.join(root, 'approuter', 'package.json'), 'utf8'));
   assert.equal(routerPackage.dependencies['@sap/approuter'], '^23.4.0');
   assert.equal(routerPackage.engines.node, '^22.0.0');
@@ -174,8 +174,8 @@ test('App Router protects application routes and exposes only health routes anon
   const health = appRouter.routes.find(route => route.source.startsWith('^/health/'));
   const application = appRouter.routes.find(route => route.source === '^/(.*)$');
   assert.equal(health.authenticationType, 'none');
-  assert.equal(application.authenticationType, 'xsuaa');
-  assert.equal(application.csrfProtection, true);
+  assert.equal(application.authenticationType, 'none');
+  assert.equal(application.csrfProtection, false);
 
   const mta = yaml.parse(readFileSync(path.join(root, 'mta.yaml'), 'utf8'));
   assert.equal(mta.ID, 'credit-guard');
@@ -184,8 +184,7 @@ test('App Router protects application routes and exposes only health routes anon
   for (const binding of [
     'credit-guard-db',
     'credit-guard-xsuaa',
-    'credit-guard-destination',
-    'credit-guard-job-scheduler'
+    'credit-guard-destination'
   ]) {
     assert.ok(mta.resources.some(resource => resource.name === binding));
   }
