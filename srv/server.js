@@ -259,9 +259,26 @@ cds.on('bootstrap', app => {
   });
   if (process.env.CREDIT_GUARD_DEV_DEFAULT_USER) {
     const defaultAuthHeader = `Basic ${Buffer.from(`${process.env.CREDIT_GUARD_DEV_DEFAULT_USER}:test`).toString('base64')}`;
+    const defaultRoleUser = new cds.User({
+      id: process.env.CREDIT_GUARD_DEV_DEFAULT_USER,
+      roles: [
+        'CreditAdmin',
+        'CreditReader',
+        'CreditRequester',
+        'CreditController',
+        'FinanceHead',
+        'CreditAnalyst',
+        'CreditManager',
+        'CreditApprover',
+        'CreditMonitor'
+      ]
+    });
     app.use((req, res, next) => {
       if (!req.headers.authorization) {
         req.headers.authorization = defaultAuthHeader;
+      }
+      if (!req.user || req.user._is_anonymous) {
+        req.user = defaultRoleUser;
       }
       if (req.get('X-CSRF-Token')?.toLowerCase() === 'fetch') {
         res.set('X-CSRF-Token', 'dev-csrf-token');
