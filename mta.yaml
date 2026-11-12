@@ -17,12 +17,13 @@ modules:
     path: gen/srv
     parameters:
       buildpack: nodejs_buildpack
+      command: npm run start:cf
       instances: 1
       memory: 768M
       disk-quota: 1G
       health-check-type: http
       health-check-http-endpoint: /health/ready
-      health-check-invocation-timeout: 10
+      health-check-invocation-timeout: 30
     properties:
       CDS_ENV: production
       NODE_ENV: production

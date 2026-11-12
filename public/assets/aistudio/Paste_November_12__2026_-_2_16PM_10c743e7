@@ -1,0 +1,271 @@
+mbt : File C:\Users\HP\AppData\Roaming\npm\mbt.ps1 cannot be loaded because running scripts is 
+disabled on this system. For more information, see about_Execution_Policies at 
+https:/go.microsoft.com/fwlink/?LinkID=135170.
+At line:2 char:4
++    mbt --version
++    ~~~
+    + CategoryInfo          : SecurityError: (:) [], PSSecurityException
+    + FullyQualifiedErrorId : UnauthorizedAccess
+Listing installed plugins...
+
+plugin      version   command name                 command help
+multiapps   3.12.0    bg-deploy                    Deploy a multi-target app using blue-green deployment
+multiapps   3.12.0    deploy                       Deploy a new multi-target app or sync changes to an existing one
+multiapps   3.12.0    download-mta-op-logs, dmol   Download logs of multi-target app operation
+multiapps   3.12.0    mta                          Display health and status for a multi-target app
+multiapps   3.12.0    mta-ops                      List multi-target app operations
+multiapps   3.12.0    mtas                         List all multi-target apps
+multiapps   3.12.0    purge-mta-config             Purge no longer valid configuration entries
+multiapps   3.12.0    rollback-mta                 (EXPERIMENTAL) Rollback of a multi-target app works only if [--backup-previous-version] flag was used during blue-green deployment and backup applications exists in the space
+multiapps   3.12.0    undeploy                     Undeploy a multi-target app
+
+Use 'cf.exe repo-plugins' to list plugins in registered repos available to install.
+PS C:\Users\HP\Documents\Credit-guard> git pull origin
+remote: Enumerating objects: 13, done.
+remote: Counting objects: 100% (13/13), done.
+remote: Compressing objects: 100% (5/5), done.
+remote: Total 7 (delta 3), reused 0 (delta 0), pack-reused 0 (from 0)
+Unpacking objects: 100% (7/7), 35.31 KiB | 583.00 KiB/s, done.
+From https://github.com/RajuKGosala-45/Credit-guard
+   e9e5226..eff281f  main       -> origin/main
+Updating e9e5226..eff281f
+Fast-forward
+ .github/workflows/build-mta.yml |    2 +-
+ mta.yaml                        |    2 +-
+ package-lock.json               | 5627 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 5629 insertions(+), 2# MultiApps ప్లగ్ఇన్ ఉందో లేదో చెక్ చేయండి / ఇన్‌స్టాల్ చేయండి
+>> cf install-plugin multiapps -fuard> 
+Searching CF-Community for plugin multiapps...
+Plugin multiapps 3.12.0 found in: CF-Community
+Plugin multiapps 3.12.0 is already installed.
+Attention: Plugins are binaries written by potentially untrusted authors.
+Install and use plugins at your own risk.
+Starting download of plugin binary from repository CF-Community...
+ 11.42 MiB / 11.42 MiB [============================================================================================================================================] 100.00% 1s
+Plugin multiapps 3.12.0 is already installed. Uninstalling existing plugin...
+OK
+
+Plugin multiapps successfully uninstalled.
+Installing plugin multiapps...
+OK
+
+Plugin multiapps 3.12.0 successfully installed.
+PS C:\Users\HP\Documents\Credit-guard> cf target -o 985d84e1trial -s dev
+Organization '985d84e1trial' not found.
+FAILED
+PS C:\Users\HP\Documents\Credit-guard> cf apps
+No org targeted, use 'cf.exe target -o ORG' to target an org.
+FAILED
+PS C:\Users\HP\Documents\Credit-guard> cf login --sso
+API endpoint: https://api.cf.us10-001.hana.ondemand.com
+
+Temporary Authentication Code ( Get one at https://login.cf.us10-001.hana.ondemand.com/passcode ): 
+Authenticating...
+OK
+
+
+API endpoint:   https://api.cf.us10-001.hana.ondemand.com
+API version:    3.235.0
+user:           kasirajugosala@outlook.com
+No org or space targeted, use 'cf.exe target -o ORG -s SPACE'
+PS C:\Users\HP\Documents\Credit-guard> cf apps       
+No org targeted, use 'cf.exe target -o ORG' to target an org.
+FAILED
+PS C:\Users\HP\Documents\Credit-guard> cf login -a https://api.cf.ap21.hana.ondemand.com --sso
+API endpoint: https://api.cf.ap21.hana.ondemand.com
+
+Temporary Authentication Code ( Get one at https://login.cf.ap21.hana.ondemand.com/passcode ): 
+Authenticating...
+OK
+
+
+Targeted org 985d84e1trial.
+
+Targeted space dev.
+
+API endpoint:   https://api.cf.ap21.hana.ondemand.com
+API version:    3.235.0
+user:           kasirajugosala@outlook.com
+org:            985d84e1trial
+space:          dev
+PS C:\Users\HP\Documents\Credit-guard> cf target -o 985d84e1trial -s dev
+API endpoint:   https://api.cf.ap21.hana.ondemand.com
+API version:    3.235.0
+user:           kasirajugosala@outlook.com
+org:            985d84e1trial
+space:          dev
+PS C:\Users\HP\Documents\Credit-guard> cf apps
+Getting apps in org 985d84e1trial / space dev as kasirajugosala@outlook.com...
+
+No apps found
+PS C:\Users\HP\Documents\Credit-guard> cf deploy "D:\credit-guard_1.0.0.mtar"
+Deploying multi-target app archive D:\credit-guard_1.0.0.mtar in org 985d84e1trial / space dev as kasirajugosala@outlook.com...
+
+Uploading 1 files...
+  D:\credit-guard_1.0.0.mtar
+ 8s  33.27 MiB / 33.27 MiB [========================================================================================================================================] 100.00% 8s
+OK
+Operation ID: 97f6cfcb-de5f-11f1-ac11-eeee0a90ccc9
+Deploying in org "985d84e1trial" and space "dev"
+Detected MTA schema version: "3"
+No deployed MTA detected - this is initial deployment of MTA with ID "credit-guard"
+Detected new MTA version: "1.0.0"
+Processing service "credit-guard-destination"...
+Processing service "credit-guard-db"...
+Creating service "credit-guard-db" from MTA resource "credit-guard-db"...
+Processing service "credit-guard-xsuaa"...
+Setting service "credit-guard-xsuaa" parameters from "xs-security.json"
+Creating service "credit-guard-xsuaa" from MTA resource "credit-guard-xsuaa"...
+1 of 1 done
+1 of 1 done
+1 of 1 done
+Creating application "credit-guard-db-deployer" from MTA module "credit-guard-db-deployer"...
+Binding service instance "credit-guard-db" to application "credit-guard-db-deployer"...
+Uploading application "credit-guard-db-deployer"...
+Started async upload of application "credit-guard-db-deployer"
+Staging application "credit-guard-db-deployer"...
+Application "credit-guard-db-deployer" staged
+Executing task "deploy" on application "credit-guard-db-deployer"...
+Creating application "credit-guard-srv" from MTA module "credit-guard-srv"...
+Binding service instance "credit-guard-db" to application "credit-guard-srv"...
+Binding service instance "credit-guard-xsuaa" to application "credit-guard-srv"...
+Binding service instance "credit-guard-destination" to application "credit-guard-srv"...
+Uploading application "credit-guard-srv"...
+Started async upload of application "credit-guard-srv"
+Staging application "credit-guard-srv"...
+Application "credit-guard-srv" staged
+Starting application "credit-guard-srv"...
+Error starting application "credit-guard-srv": Some instances have crashed. Check the application logs of your application for details.
+Download the MTA operation logs for more details.
+Proceeding with automatic retry... (3 of 3 attempts left)
+Stopping application "credit-guard-srv"...
+Starting application "credit-guard-srv"...
+Error starting application "credit-guard-srv": Some instances have crashed. Check the application logs of your application for details.
+Download the MTA operation logs for more details.
+Proceeding with automatic retry... (2 of 3 attempts left)
+Stopping application "credit-guard-srv"...
+Starting application "credit-guard-srv"...
+Error starting application "credit-guard-srv": Some instances have crashed. Check the application logs of your application for details.
+Download the MTA operation logs for more details.
+Proceeding with automatic retry... (1 of 3 attempts left)
+Stopping application "credit-guard-srv"...
+Starting application "credit-guard-srv"...
+Error starting application "credit-guard-srv": Some instances have crashed. Check the application logs of your application for details.
+Download the MTA operation logs for more details.
+Process failed.
+Use "cf deploy -i 97f6cfcb-de5f-11f1-ac11-eeee0a90ccc9 -a abort" to abort the process.
+Use "cf deploy -i 97f6cfcb-de5f-11f1-ac11-eeee0a90ccc9 -a retry" to retry the process.
+Use "cf dmol -i 97f6cfcb-de5f-11f1-ac11-eeee0a90ccc9" to download the logs of the process.
+PS C:\Users\HP\Documents\Credit-guard> cf logs credit-guard-srv --recent
+Retrieving logs for app credit-guard-srv in org 985d84e1trial / space dev as kasirajugosala@outlook.com...
+
+   2026-11-12T13:14:41.69+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T07:44:41.690Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_started',\n  slotKey: 'scheduled:5m:5981564',\n  force: false,\n  triggeredBy: 'AUTONOMOUS_SCHEDULER'\n}","type":"log"}
+   2026-11-12T13:14:42.35+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T07:44:42.352Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'autonomous_recalculation_completed', snapshotCount: 13 }","type":"log"}
+   2026-11-12T13:14:42.81+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"monitoring-worker","timestamp":"2026-11-12T07:44:42.818Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'monitoring_job_finished', status: 'COMPLETED' }","type":"log"}
+   2026-11-12T13:14:45.89+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T07:44:45.893Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_decisions_completed',\n  evaluated: 0,\n  autoApproved: 0,\n  autoRejected: 0,\n  escalated: 0\n}","type":"log"}
+   2026-11-12T13:14:45.95+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T07:44:45.959Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_finished',\n  slotKey: 'scheduled:5m:5981564',\n  runId: 'df914ecc-c505-4f6b-94fd-5e10dc2b2f59',\n  durationMs: 4268,\n  snapshotCount: 13\n}","type":"log"}
+   2026-11-12T13:15:09.30+0530 [HEALTH/0] ERR Timed out after 1m0s (30 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused
+   2026-11-12T13:15:09.30+0530 [CELL/0] ERR Failed after 1m0.355s: startup health check never passed.
+   2026-11-12T13:16:16.84+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa stopping instance 41fab020-5e6c-4440-70c0-3e3b
+   2026-11-12T13:16:16.84+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa destroying container for instance 41fab020-5e6c-4440-70c0-3e3b
+   2026-11-12T13:16:16.85+0530 [API/8] OUT Process has crashed with type: "web"
+   2026-11-12T13:16:16.87+0530 [API/8] OUT App instance exited with guid c5a2a692-1f53-42de-9da9-83a4538a977c payload: {"instance" => "41fab020-5e6c-4440-70c0-3e3b", "index" => 0, "cell_id" => "3697da87-6170-41a4-acb7-9186f1527dfa", "reason" => "CRASHED", "exit_description" => "Instance never healthy after 1m0.355s: Timed out after 1m0s (30 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused; process did not exit", "crash_count" => 10, "crash_timestamp" => 1794469576837905860, "version" => "080dae86-8487-41e7-889d-102abdb48db6"}
+   2026-11-12T13:16:17.00+0530 [PROXY/0] OUT Exit status 137
+   2026-11-12T13:16:21.87+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa successfully destroyed container for instance 41fab020-5e6c-4440-70c0-3e3b
+   2026-11-12T13:32:44.59+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa creating container for instance bd5282e4-05f2-45f9-708a-abd7
+   2026-11-12T13:32:45.20+0530 [CELL/0] OUT Security group rules were updated
+   2026-11-12T13:32:45.25+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa successfully created container for instance bd5282e4-05f2-45f9-708a-abd7
+   2026-11-12T13:32:47.14+0530 [CELL/0] OUT Downloading droplet...
+   2026-11-12T13:32:51.32+0530 [CELL/0] OUT Downloaded droplet
+   2026-11-12T13:32:51.32+0530 [CELL/0] OUT Starting health monitoring of container
+   2026-11-12T13:32:51.51+0530 [APP/PROC/WEB/0] OUT Invoking pre-start scripts.
+   2026-11-12T13:32:51.80+0530 [APP/PROC/WEB/0] OUT Invoking start command.
+   2026-11-12T13:32:52.41+0530 [APP/PROC/WEB/0] OUT > credit-guard@1.0.0 start
+   2026-11-12T13:32:52.41+0530 [APP/PROC/WEB/0] OUT > CREDIT_GUARD_DEV_DEFAULT_USER=administrator LLM_PROVIDER=gemini LLM_MODEL=gemini-3.1-flash-lite LLM_TIMEOUT_MS=25000 AGENT_MEMORY_ENABLED=true cds-serve --port 3000
+   2026-11-12T13:32:52.67+0530 [APP/PROC/WEB/0] OUT [cds] - loading server from { file: 'srv/server.js' }
+   2026-11-12T13:32:53.28+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:02:53.282Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"using auth strategy {\n  kind: 'xsuaa',\n  impl: 'node_modules/@sap/cds/lib/srv/middlewares/auth/jwt-auth'\n} \n","type":"log"}
+   2026-11-12T13:32:53.49+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:02:53.490Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"loaded model from 1 file(s):\n","type":"log"}
+   2026-11-12T13:32:53.49+0530 [APP/PROC/WEB/0] OUT srv/csn.json
+   2026-11-12T13:32:54.04+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:02:54.039Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"connect to db > hana {\n  database_id: 'eed6e985-ec54-4da7-98ae-f94872038242',\n  host: 'eed6e985-ec54-4da7-98ae-f94872038242.hana.prod-ap21.hanacloud.ondemand.com',\n  port: '443',\n  driver: 'com.sap.db.jdbc.Driver',\n  url: 'jdbc:sap://eed6e985-ec54-4da7-98ae-f94872038242.hana.prod-ap21.hanacloud.ondemand.com:443?encrypt=true&validateCertificate=true&currentschema=27DAD0639A7B4D25A0160B980BF3F208',\n  schema: '27DAD0639A7B4D25A0160B980BF3F208',\n  certificate: '...',\n  hdi_user: '27DAD0639A7B4D25A0160B980BF3F208_19OVNJ8K5R9H2IJGNIZ547ZGV_DT',\n  hdi_password: '...',\n  user: '27DAD0639A7B4D25A0160B980BF3F208_19OVNJ8K5R9H2IJGNIZ547ZGV_RT',\n  password: '...'\n}","type":"log"}
+   2026-11-12T13:32:54.13+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:02:54.130Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"serving CreditService {\n  impl: 'node_modules/@sap/cds/libx/_runtime/common/Service.js',\n  path: '/odata/v4/credit'\n}","type":"log"}
+   2026-11-12T13:32:54.16+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:02:54.161Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_scheduler_started',\n  intervalMs: 300000,\n  initialDelayMs: 30000\n}","type":"log"}
+   2026-11-12T13:32:54.16+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:02:54.162Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"server listening on { url: 'http://localhost:3000' }","type":"log"}
+   2026-11-12T13:32:54.16+0530 [APP/PROC/WEB/0] OUT [cds] - server launched at 11/12/2026, 8:02:53 AM, version: 8.9.10, in: 901.602ms
+   2026-11-12T13:33:24.16+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:03:24.164Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_started',\n  slotKey: 'scheduled:5m:5981568',\n  force: false,\n  triggeredBy: 'AUTONOMOUS_SCHEDULER'\n}","type":"log"}
+   2026-11-12T13:33:24.66+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:03:24.663Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'autonomous_recalculation_completed', snapshotCount: 13 }","type":"log"}
+   2026-11-12T13:33:25.35+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"monitoring-worker","timestamp":"2026-11-12T08:03:25.349Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'monitoring_job_finished', status: 'COMPLETED' }","type":"log"}
+   2026-11-12T13:33:27.59+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:03:27.591Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_decisions_completed',\n  evaluated: 0,\n  autoApproved: 0,\n  autoRejected: 0,\n  escalated: 0\n}","type":"log"}
+   2026-11-12T13:33:27.62+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:03:27.620Z","layer":"cds","component_type":"application","container_id":"10.32.2.7","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_finished',\n  slotKey: 'scheduled:5m:5981568',\n  runId: '3e495c80-176c-409f-b3bc-57e0fd3144c4',\n  durationMs: 3456,\n  snapshotCount: 13\n}","type":"log"}
+   2026-11-12T13:33:51.81+0530 [HEALTH/0] ERR Timed out after 1m0s (31 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused
+   2026-11-12T13:33:51.81+0530 [CELL/0] ERR Failed after 1m0.489s: startup health check never passed.
+   2026-11-12T13:34:58.78+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa stopping instance bd5282e4-05f2-45f9-708a-abd7
+   2026-11-12T13:34:58.78+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa destroying container for instance bd5282e4-05f2-45f9-708a-abd7
+   2026-11-12T13:34:58.79+0530 [API/8] OUT Process has crashed with type: "web"
+   2026-11-12T13:34:58.82+0530 [API/8] OUT App instance exited with guid c5a2a692-1f53-42de-9da9-83a4538a977c payload: {"instance" => "bd5282e4-05f2-45f9-708a-abd7", "index" => 0, "cell_id" => "3697da87-6170-41a4-acb7-9186f1527dfa", "reason" => "CRASHED", "exit_description" => "Instance never healthy after 1m0.489s: Timed out after 1m0s (31 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused; process did not exit", "crash_count" => 11, "crash_timestamp" => 1794470698780244679, "version" => "080dae86-8487-41e7-889d-102abdb48db6"}
+   2026-11-12T13:34:59.43+0530 [PROXY/0] OUT Exit status 137
+   2026-11-12T13:35:01.69+0530 [CELL/0] OUT Cell 3697da87-6170-41a4-acb7-9186f1527dfa successfully destroyed container for instance bd5282e4-05f2-45f9-708a-abd7
+   2026-11-12T13:51:07.49+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 creating container for instance c4db2e68-004e-4ecb-77d1-547d
+   2026-11-12T13:51:08.53+0530 [CELL/0] OUT Security group rules were updated
+   2026-11-12T13:51:08.59+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 successfully created container for instance c4db2e68-004e-4ecb-77d1-547d
+   2026-11-12T13:51:09.50+0530 [CELL/0] OUT Downloading droplet...
+   2026-11-12T13:51:14.11+0530 [CELL/0] OUT Downloaded droplet
+   2026-11-12T13:51:14.12+0530 [CELL/0] OUT Starting health monitoring of container
+   2026-11-12T13:51:14.40+0530 [APP/PROC/WEB/0] OUT Invoking pre-start scripts.
+   2026-11-12T13:51:14.78+0530 [APP/PROC/WEB/0] OUT Invoking start command.
+   2026-11-12T13:51:15.59+0530 [APP/PROC/WEB/0] OUT > credit-guard@1.0.0 start
+   2026-11-12T13:51:15.59+0530 [APP/PROC/WEB/0] OUT > CREDIT_GUARD_DEV_DEFAULT_USER=administrator LLM_PROVIDER=gemini LLM_MODEL=gemini-3.1-flash-lite LLM_TIMEOUT_MS=25000 AGENT_MEMORY_ENABLED=true cds-serve --port 3000
+   2026-11-12T13:51:15.93+0530 [APP/PROC/WEB/0] OUT [cds] - loading server from { file: 'srv/server.js' }
+   2026-11-12T13:51:16.77+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:21:16.773Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"using auth strategy {\n  kind: 'xsuaa',\n  impl: 'node_modules/@sap/cds/lib/srv/middlewares/auth/jwt-auth'\n} \n","type":"log"}
+   2026-11-12T13:51:17.06+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:21:17.065Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"loaded model from 1 file(s):\n","type":"log"}
+   2026-11-12T13:51:17.06+0530 [APP/PROC/WEB/0] OUT srv/csn.json
+   2026-11-12T13:51:17.74+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:21:17.738Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"connect to db > hana {\n  database_id: 'eed6e985-ec54-4da7-98ae-f94872038242',\n  host: 'eed6e985-ec54-4da7-98ae-f94872038242.hana.prod-ap21.hanacloud.ondemand.com',\n  port: '443',\n  driver: 'com.sap.db.jdbc.Driver',\n  url: 'jdbc:sap://eed6e985-ec54-4da7-98ae-f94872038242.hana.prod-ap21.hanacloud.ondemand.com:443?encrypt=true&validateCertificate=true&currentschema=27DAD0639A7B4D25A0160B980BF3F208',\n  schema: '27DAD0639A7B4D25A0160B980BF3F208',\n  certificate: '...',\n  hdi_user: '27DAD0639A7B4D25A0160B980BF3F208_19OVNJ8K5R9H2IJGNIZ547ZGV_DT',\n  hdi_password: '...',\n  user: '27DAD0639A7B4D25A0160B980BF3F208_19OVNJ8K5R9H2IJGNIZ547ZGV_RT',\n  password: '...'\n}","type":"log"}
+   2026-11-12T13:51:17.86+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:21:17.867Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"serving CreditService {\n  impl: 'node_modules/@sap/cds/libx/_runtime/common/Service.js',\n  path: '/odata/v4/credit'\n}","type":"log"}
+   2026-11-12T13:51:17.91+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:21:17.910Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_scheduler_started',\n  intervalMs: 300000,\n  initialDelayMs: 30000\n}","type":"log"}
+   2026-11-12T13:51:17.91+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:21:17.911Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"server listening on { url: 'http://localhost:3000' }","type":"log"}
+   2026-11-12T13:51:17.91+0530 [APP/PROC/WEB/0] OUT [cds] - server launched at 11/12/2026, 8:21:16 AM, version: 8.9.10, in: 1.169s
+   2026-11-12T13:51:47.91+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:21:47.915Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_started',\n  slotKey: 'scheduled:5m:5981572',\n  force: false,\n  triggeredBy: 'AUTONOMOUS_SCHEDULER'\n}","type":"log"}
+   2026-11-12T13:51:48.83+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:21:48.830Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'autonomous_recalculation_completed', snapshotCount: 13 }","type":"log"}
+   2026-11-12T13:51:49.27+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"monitoring-worker","timestamp":"2026-11-12T08:21:49.276Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'monitoring_job_finished', status: 'COMPLETED' }","type":"log"}
+   2026-11-12T13:51:54.63+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:21:54.633Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_decisions_completed',\n  evaluated: 0,\n  autoApproved: 0,\n  autoRejected: 0,\n  escalated: 0\n}","type":"log"}
+   2026-11-12T13:51:54.67+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:21:54.675Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_finished',\n  slotKey: 'scheduled:5m:5981572',\n  runId: '50a444c2-bb8e-466c-acac-99c7d1d53aaf',\n  durationMs: 6760,\n  snapshotCount: 13\n}","type":"log"}
+   2026-11-12T13:52:14.58+0530 [HEALTH/0] ERR Timed out after 1m0s (30 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused
+   2026-11-12T13:52:14.58+0530 [CELL/0] ERR Failed after 1m0.469s: startup health check never passed.
+   2026-11-12T13:53:21.13+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 stopping instance c4db2e68-004e-4ecb-77d1-547d
+   2026-11-12T13:53:21.13+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 destroying container for instance c4db2e68-004e-4ecb-77d1-547d
+   2026-11-12T13:53:21.13+0530 [API/8] OUT Process has crashed with type: "web"
+   2026-11-12T13:53:21.15+0530 [API/8] OUT App instance exited with guid c5a2a692-1f53-42de-9da9-83a4538a977c payload: {"instance" => "c4db2e68-004e-4ecb-77d1-547d", "index" => 0, "cell_id" => "1ea14514-f0fe-461c-9aa9-a53bbe093b00", "reason" => "CRASHED", "exit_description" => "Instance never healthy after 1m0.469s: Timed out after 1m0s (30 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused; process did not exit", "crash_count" => 12, "crash_timestamp" => 1794471801122235148, "version" => "080dae86-8487-41e7-889d-102abdb48db6"}
+   2026-11-12T13:53:21.44+0530 [PROXY/0] OUT Exit status 137
+   2026-11-12T13:53:25.55+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 successfully destroyed container for instance c4db2e68-004e-4ecb-77d1-547d
+   2026-11-12T14:09:25.24+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 creating container for instance 9f4200e0-10e5-48d4-6073-3dd5
+   2026-11-12T14:09:26.23+0530 [CELL/0] OUT Security group rules were updated
+   2026-11-12T14:09:26.32+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 successfully created container for instance 9f4200e0-10e5-48d4-6073-3dd5
+   2026-11-12T14:09:27.62+0530 [CELL/0] OUT Downloading droplet...
+   2026-11-12T14:09:32.98+0530 [CELL/0] OUT Downloaded droplet
+   2026-11-12T14:09:32.98+0530 [CELL/0] OUT Starting health monitoring of container
+   2026-11-12T14:09:33.17+0530 [APP/PROC/WEB/0] OUT Invoking pre-start scripts.
+   2026-11-12T14:09:33.56+0530 [APP/PROC/WEB/0] OUT Invoking start command.
+   2026-11-12T14:09:34.36+0530 [APP/PROC/WEB/0] OUT > credit-guard@1.0.0 start
+   2026-11-12T14:09:34.36+0530 [APP/PROC/WEB/0] OUT > CREDIT_GUARD_DEV_DEFAULT_USER=administrator LLM_PROVIDER=gemini LLM_MODEL=gemini-3.1-flash-lite LLM_TIMEOUT_MS=25000 AGENT_MEMORY_ENABLED=true cds-serve --port 3000
+   2026-11-12T14:09:34.67+0530 [APP/PROC/WEB/0] OUT [cds] - loading server from { file: 'srv/server.js' }
+   2026-11-12T14:09:35.55+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:39:35.550Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"using auth strategy {\n  kind: 'xsuaa',\n  impl: 'node_modules/@sap/cds/lib/srv/middlewares/auth/jwt-auth'\n} \n","type":"log"}
+   2026-11-12T14:09:35.88+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:39:35.879Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"loaded model from 1 file(s):\n","type":"log"}
+   2026-11-12T14:09:35.88+0530 [APP/PROC/WEB/0] OUT srv/csn.json
+   2026-11-12T14:09:36.67+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:39:36.670Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"connect to db > hana {\n  database_id: 'eed6e985-ec54-4da7-98ae-f94872038242',\n  host: 'eed6e985-ec54-4da7-98ae-f94872038242.hana.prod-ap21.hanacloud.ondemand.com',\n  port: '443',\n  driver: 'com.sap.db.jdbc.Driver',\n  url: 'jdbc:sap://eed6e985-ec54-4da7-98ae-f94872038242.hana.prod-ap21.hanacloud.ondemand.com:443?encrypt=true&validateCertificate=true&currentschema=27DAD0639A7B4D25A0160B980BF3F208',\n  schema: '27DAD0639A7B4D25A0160B980BF3F208',\n  certificate: '...',\n  hdi_user: '27DAD0639A7B4D25A0160B980BF3F208_19OVNJ8K5R9H2IJGNIZ547ZGV_DT',\n  hdi_password: '...',\n  user: '27DAD0639A7B4D25A0160B980BF3F208_19OVNJ8K5R9H2IJGNIZ547ZGV_RT',\n  password: '...'\n}","type":"log"}
+   2026-11-12T14:09:36.81+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:39:36.816Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"serving CreditService {\n  impl: 'node_modules/@sap/cds/libx/_runtime/common/Service.js',\n  path: '/odata/v4/credit'\n}","type":"log"}
+   2026-11-12T14:09:36.86+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:39:36.861Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_scheduler_started',\n  intervalMs: 300000,\n  initialDelayMs: 30000\n}","type":"log"}
+   2026-11-12T14:09:36.86+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"cds","timestamp":"2026-11-12T08:39:36.862Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"server listening on { url: 'http://localhost:3000' }","type":"log"}
+   2026-11-12T14:09:36.86+0530 [APP/PROC/WEB/0] OUT [cds] - server launched at 11/12/2026, 8:39:35 AM, version: 8.9.10, in: 1.350s
+   2026-11-12T14:10:06.86+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:40:06.867Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_started',\n  slotKey: 'scheduled:5m:5981576',\n  force: false,\n  triggeredBy: 'AUTONOMOUS_SCHEDULER'\n}","type":"log"}
+   2026-11-12T14:10:07.77+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:40:07.769Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'autonomous_recalculation_completed', snapshotCount: 13 }","type":"log"}
+   2026-11-12T14:10:08.31+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"monitoring-worker","timestamp":"2026-11-12T08:40:08.316Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{ event: 'monitoring_job_finished', status: 'COMPLETED' }","type":"log"}
+   2026-11-12T14:10:12.60+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:40:12.599Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_decisions_completed',\n  evaluated: 0,\n  autoApproved: 0,\n  autoRejected: 0,\n  escalated: 0\n}","type":"log"}
+   2026-11-12T14:10:12.68+0530 [APP/PROC/WEB/0] OUT {"level":"info","logger":"autonomous-scheduler","timestamp":"2026-11-12T08:40:12.682Z","layer":"cds","component_type":"application","container_id":"10.32.1.5","component_id":"c5a2a692-1f53-42de-9da9-83a4538a977c","component_name":"credit-guard-srv","component_instance":0,"source_instance":0,"organization_name":"985d84e1trial","organization_id":"aec3f2e9-8d94-4d83-aca6-464a02f1a50b","space_name":"dev","space_id":"6eecfb3a-ed81-4cbe-bf27-3e99f085ba12","msg":"{\n  event: 'autonomous_cycle_finished',\n  slotKey: 'scheduled:5m:5981576',\n  runId: 'b4a4eaa7-29f9-44fb-96ef-248786b65c03',\n  durationMs: 5814,\n  snapshotCount: 13\n}","type":"log"}
+   2026-11-12T14:10:33.59+0530 [HEALTH/0] ERR Timed out after 1m0s (30 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused
+   2026-11-12T14:10:33.59+0530 [CELL/0] ERR Failed after 1m0.615s: startup health check never passed.
+   2026-11-12T14:11:40.24+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 stopping instance 9f4200e0-10e5-48d4-6073-3dd5
+   2026-11-12T14:11:40.24+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 destroying container for instance 9f4200e0-10e5-48d4-6073-3dd5
+   2026-11-12T14:11:40.25+0530 [API/0] OUT Process has crashed with type: "web"
+   2026-11-12T14:11:40.28+0530 [API/0] OUT App instance exited with guid c5a2a692-1f53-42de-9da9-83a4538a977c payload: {"instance" => "9f4200e0-10e5-48d4-6073-3dd5", "index" => 0, "cell_id" => "1ea14514-f0fe-461c-9aa9-a53bbe093b00", "reason" => "CRASHED", "exit_description" => "Instance never healthy after 1m0.615s: Timed out after 1m0s (30 attempts) waiting for startup check to succeed: failed to make HTTP request to '/health/ready' on port 8080: connection refused; process did not exit", "crash_count" => 13, "crash_timestamp" => 1794472900237151823, "version" => "080dae86-8487-41e7-889d-102abdb48db6"}
+   2026-11-12T14:11:40.67+0530 [PROXY/0] OUT Exit status 137
+   2026-11-12T14:11:45.78+0530 [CELL/0] OUT Cell 1ea14514-f0fe-461c-9aa9-a53bbe093b00 successfully destroyed container for instance 9f4200e0-10e5-48d4-6073-3dd5
+PS C:\Users\HP\Documents\Credit-guard> 
