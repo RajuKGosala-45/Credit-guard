@@ -3,9 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Credit limit monitoring and exposure analysis demo for Bluspring Enterprises",
-  "engines": {
-    "node": ">=22.0.0"
-  },
+  "engines": { "node": "^22.0.0" },
   "scripts": {
     "dev": "CREDIT_GUARD_DEV_DEFAULT_USER=administrator LLM_PROVIDER=gemini LLM_MODEL=gemini-3.1-flash-lite LLM_TIMEOUT_MS=25000 AGENT_MEMORY_ENABLED=true cds-serve --port 3000",
     "start": "CREDIT_GUARD_DEV_DEFAULT_USER=administrator LLM_PROVIDER=gemini LLM_MODEL=gemini-3.1-flash-lite LLM_TIMEOUT_MS=25000 AGENT_MEMORY_ENABLED=true cds-serve --port 3000",
