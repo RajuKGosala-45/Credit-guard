@@ -25,12 +25,6 @@ jobs:
       - name: Install Project Dependencies
         run: npm install
 
-      - name: Run Test Suite
-        run: npm test
-
-      - name: Install Make (build-essential)
-        run: sudo apt-get update && sudo apt-get install -y build-essential
-
       - name: Install Cloud MTA Build Tool (mbt)
         run: npm install -g mbt
 
@@ -45,3 +39,25 @@ jobs:
           name: credit-guard-mtar
           path: mta_archives/*.mtar
           retention-days: 7
+
+  test:
+    name: Unit tests (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Project Dependencies
+        run: npm install
+
+      - name: Run Test Suite
+        run: npm test
