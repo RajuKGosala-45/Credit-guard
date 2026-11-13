@@ -9,8 +9,12 @@ let moduleSequence = 0;
 async function loadView(name) {
   const utils = await fs.readFile(path.join(appRoot, 'utils.js'), 'utf8');
   const utilsUrl = `data:text/javascript;base64,${Buffer.from(utils).toString('base64')}`;
+  let blockRendererSource = await fs.readFile(path.join(appRoot, 'views', 'blockRenderer.js'), 'utf8');
+  blockRendererSource = blockRendererSource.replaceAll("'../utils.js'", `'${utilsUrl}'`);
+  const blockRendererUrl = `data:text/javascript;base64,${Buffer.from(blockRendererSource).toString('base64')}`;
   let source = await fs.readFile(path.join(appRoot, 'views', name), 'utf8');
   source = source.replaceAll("'../utils.js'", `'${utilsUrl}'`);
+  source = source.replaceAll("'./blockRenderer.js'", `'${blockRendererUrl}'`);
   const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${moduleSequence += 1}`;
   return import(moduleUrl);
 }

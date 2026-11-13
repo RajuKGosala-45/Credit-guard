@@ -121,7 +121,7 @@ function summarize(customers, findings) {
     warningCustomers: customers.filter(customer => customer.status === 'WARNING').length,
     breachedCustomers: customers.filter(customer => customer.status === 'BREACH').length,
     criticalCustomers: customers.filter(customer => customer.flags.includes('CRITICAL')).length,
-    overdueCustomers: customers.filter(customer => customer.overdueAmount > 0).length,
+    overdueCustomers: portfolio.overdueRiskCustomers ?? customers.filter(customer => customer.overdueAmount > 0).length,
     overdueInvoiceCount: portfolio.overdueInvoiceCount,
     totalExposure: portfolio.totalExposure,
     totalLimit: portfolio.totalLimit,

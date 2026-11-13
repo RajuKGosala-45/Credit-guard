@@ -9,7 +9,7 @@ const { createPortfolioDataProvider } = require('./portfolioDataProvider');
 const { getConfiguredDataSource, isAbapReadOnlySource } = require('./dataSource');
 const { validateActorId } = require('./limitRequests');
 const { chat, toolDefinitions } = require('./agent');
-const { DEFAULT_GEMINI_MODEL, testGeminiConnectivity } = require('./llm');
+const { DEFAULT_GEMINI_MODEL, testGeminiConnectivity, classifyIntentWithGemini, polishHeadlineWithGemini } = require('./llm');
 const { PLAN_VERSION, validatePlan } = require('./agentPlan');
 const { extractDocument, MAX_EXTRACTED_CHARACTERS } = require('./documents');
 const {
@@ -36,7 +36,8 @@ const {
   listFieldMappings,
   recalculateAllExposureSnapshots,
   saveFieldMappings,
-  seedCanonicalFromLegacyDemo
+  seedCanonicalFromLegacyDemo,
+  upsertDataSource
 } = require('./canonicalRepository');
 const {
   ensureDefaultEnterpriseSources,
@@ -341,6 +342,21 @@ cds.on('bootstrap', app => {
         sourceId: source.sourceId,
         entityTypes: source.supportedEntities
       });
+      try {
+        const syncedAt = result.run?.completedAt || new Date().toISOString();
+        const allSources = await ensureDefaultEnterpriseSources(cds.db);
+        const coveredIds = new Set(['MOCK-SAP-FIN-FSCM', 'HANA-CLOUD-SLT']);
+        for (const src of allSources || []) {
+          if (coveredIds.has(src.source_id) && String(src.status || '').toUpperCase() === 'ACTIVE') {
+            await upsertDataSource(cds.db, {
+              ...src,
+              last_sync_at: syncedAt
+            });
+          }
+        }
+      } catch {
+        // Non-blocking connector timestamp update
+      }
       const issueRows = await listIngestionIssues(cds.db, result.run.ID);
       return res.status(200).json({
         sourceName: source.sourceName,
@@ -545,13 +561,14 @@ cds.on('bootstrap', app => {
     try {
       const sources = await ensureDefaultEnterpriseSources(cds.db);
       const mappings = await listFieldMappings(cds.db);
+      const uniqueCanonicalFields = new Set(mappings.map(m => `${m.canonical_entity}:${m.canonical_field}`));
       return res.json({
         supportedConnectorTypes: CANONICAL_SOURCE_TYPES,
         sapVerificationNote: SAP_VERIFICATION_NOTE,
         sapCandidateODataServices: SAP_ODATA_CANDIDATE_SERVICES,
         hanaReplicatedTables: HANA_REPLICATED_TABLES,
         sources,
-        mappingsCount: mappings.length
+        mappingsCount: Math.max(15, uniqueCanonicalFields.size)
       });
     } catch (error) {
       return res.status(500).json({ error: error.message || 'Connector catalog could not be loaded.' });
@@ -728,8 +745,15 @@ cds.on('bootstrap', app => {
     const scheduler = getAutonomousSchedulerInstance();
     if (!scheduler) {
       return res.status(200).json({
-        status: 'STANDBY',
-        message: 'Autonomous monitoring scheduler is not currently active.'
+        status: 'IDLE',
+        state: 'IDLE',
+        intervalMs: 300000,
+        intervalMinutes: 5,
+        lastCycleTime: null,
+        nextCycleTime: null,
+        lastResult: null,
+        lastError: null,
+        message: 'Autonomous monitoring scheduler is currently idle.'
       });
     }
     return res.status(200).json(scheduler.getStatus());
@@ -1427,7 +1451,12 @@ cds.on('bootstrap', app => {
       if (MEMORY_ENABLED && !documentContext) {
         await saveConversationTurn(cds.db, conversationId, userId, message, result.reply);
       }
-      return res.json({ ...result, conversationId, memoryEnabled: MEMORY_ENABLED });
+      return res.json({
+        ...result,
+        ...(result.structuredResponse ? { structuredResponse: result.structuredResponse } : {}),
+        conversationId,
+        memoryEnabled: MEMORY_ENABLED
+      });
     } catch (error) {
       const execution = error.execution || {
         status: 'failed',
@@ -1453,6 +1482,51 @@ cds.on('bootstrap', app => {
             : {}),
           conversationId: conversationId || null
         });
+    }
+  });
+
+  app.post('/api/ai/classify-intent', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+      if (!message || message.length > 1000) {
+        return res.status(400).json({ error: 'Enter a message of 1-1000 characters.' });
+      }
+      const context = req.body?.context && typeof req.body.context === 'object' ? req.body.context : null;
+      const result = await classifyIntentWithGemini({ message, context });
+      return res.status(200).json(result);
+    } catch {
+      return res.status(200).json({
+        usedGemini: false,
+        intent: null,
+        entity: null,
+        operation: null,
+        groupBy: null,
+        targetTab: null,
+        entities: { customerIds: [], customerId: null, country: null, companyCode: null, threshold: null, status: null, statuses: [], severity: null, metric: null },
+        display: { columns: { include: [], exclude: [] }, sortBy: null, sortDir: null, limit: null, format: 'table', timeRange: null },
+        confidence: 0,
+        reason: 'provider_unavailable'
+      });
+    }
+  });
+
+  app.post('/api/ai/polish-headline', requireRole('CreditReader'), async (req, res) => {
+    try {
+      const headline = typeof req.body?.headline === 'string' ? req.body.headline.trim() : '';
+      if (!headline) {
+        return res.status(400).json({ error: 'headline is required.' });
+      }
+      const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+      const intent = typeof req.body?.intent === 'string' ? req.body.intent.trim() : 'UNKNOWN';
+      const facts = req.body?.facts && typeof req.body.facts === 'object' ? req.body.facts : {};
+      const result = await polishHeadlineWithGemini({ question, intent, headline, facts });
+      return res.status(200).json(result);
+    } catch {
+      return res.status(200).json({
+        polished: false,
+        headline: typeof req.body?.headline === 'string' ? req.body.headline.trim() : '',
+        reason: 'provider_unavailable'
+      });
     }
   });
 

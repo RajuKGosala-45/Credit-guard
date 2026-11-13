@@ -168,19 +168,23 @@
 }
 
 .page-intro {
+  position: relative;
+  z-index: 75;
+  overflow: visible;
   margin-bottom: var(--space-4);
 }
 
 .freshness-meta {
+  position: relative;
+  overflow: visible;
   color: var(--color-muted);
   font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
 .freshness-meta strong {
-  margin-left: var(--space-1);
-  color: var(--color-ink);
-  font-weight: 600;
+  color: inherit;
+  font-weight: 700;
 }
 
 .muted {
@@ -431,6 +435,14 @@
 .sidebar-nav.tabs .tab[data-tab="simulator"].active {
   border: 2px solid rgba(255, 255, 255, 0.9) !important;
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.4) !important;
+  background: #0f2342 !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav.tabs .tab[data-tab="audit"].active,
+.sidebar-nav.tabs .tab[data-tab="audit-history"].active {
+  border: 2px solid rgba(168, 85, 247, 0.9) !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.5) !important;
   background: #0f2342 !important;
   color: #ffffff !important;
 }

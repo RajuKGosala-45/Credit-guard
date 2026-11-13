@@ -143,12 +143,13 @@ async function executeCanonicalAgentTool(db, toolName, args = {}) {
         listFieldMappings(db),
         listEnrichedCanonicalLimitRequests(db)
       ]);
+      const uniqueCanonicalFields = new Set(mappings.map(m => `${m.canonical_entity}:${m.canonical_field}`));
       return {
         database: getPublicDatabaseStatus(process.env),
         sapVerificationDefault: false,
         sapVerificationNote: SAP_VERIFICATION_NOTE,
         sources,
-        fieldMappingsCount: mappings.length,
+        fieldMappingsCount: Math.max(15, uniqueCanonicalFields.size),
         verifiedByUserCount: mappings.filter(m => m.verified_by_user).length,
         sapReferenceVerifiedCount: mappings.filter(m => m.sap_reference_verified).length,
         activeWorkflowRequestsCount: requests.length

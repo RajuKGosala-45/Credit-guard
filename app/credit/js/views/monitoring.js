@@ -88,20 +88,40 @@ function renderHistory(runs, canOperate) {
   </tbody></table>`;
 }
 
-export function renderMonitoring({ summary, runs, alerts, findings }) {
-  const latest = summary.latestRun;
+export function renderMonitoring({ summary, runs, alerts, findings, sharedState }) {
+  const latest = summary?.latestRun;
   const runSummary = latest?.summary;
-  const canOperate = summary.canOperate === true;
-  document.querySelector('#run-monitoring').hidden = !canOperate;
-  renderCounts(runSummary, summary.activeAlertCount);
+  const canOperate = summary?.canOperate === true;
+  const runBtn = document.querySelector('#run-monitoring');
+  if (runBtn) runBtn.hidden = !canOperate;
+  renderCounts(runSummary, summary?.activeAlertCount);
+
+  const effectiveSource = latest?.source || sharedState?.source || 'CAP database (demo)';
+  const effectiveRetrievedAt = sharedState?.retrievedAt || latest?.retrievedAt;
+  const effectiveFreshness = sharedState?.freshnessStatus || latest?.freshness || 'UNKNOWN';
+  const effectiveLastSuccess = sharedState?.lastSuccessfulAt || summary?.lastSuccessfulAt;
+
   const statusText = latest
-    ? `Latest run ${latest.status} · ${latest.source || 'source unavailable'} · retrieved ${dateTime(latest.retrievedAt)} · source freshness ${latest.freshness || 'UNKNOWN'} · last successful ${dateTime(summary.lastSuccessfulAt)}`
-    : 'No monitoring run is available yet.';
-  document.querySelector('#monitoring-status').textContent = statusText;
-  document.querySelector('#monitoring-error').textContent = latest
-    && ['FAILED', 'PARTIAL', 'STALE'].includes(latest.status)
-    ? `Latest monitoring run is ${latest.status.toLowerCase()}${latest.errorCategory ? ` (${latest.errorCategory})` : ''}. Review source availability and freshness before relying on findings.`
-    : '';
+    ? `Latest run ${latest.status} · ${effectiveSource} · retrieved ${dateTime(effectiveRetrievedAt)} · source freshness ${effectiveFreshness} · last successful ${dateTime(effectiveLastSuccess)}`
+    : sharedState?.retrievedAt
+      ? `Latest run COMPLETED · ${effectiveSource} · retrieved ${dateTime(effectiveRetrievedAt)} · source freshness ${effectiveFreshness} · last successful ${dateTime(effectiveLastSuccess)}`
+      : 'No monitoring run is available yet.';
+
+  const statusEl = document.querySelector('#monitoring-status');
+  if (statusEl) statusEl.textContent = statusText;
+
+  const autoRunEl = document.querySelector('#monitoring-autorun');
+  if (autoRunEl && sharedState?.countdownPadded) {
+    autoRunEl.textContent = `Auto-run: ON · next run in ${sharedState.countdownPadded}`;
+  }
+
+  const errorEl = document.querySelector('#monitoring-error');
+  if (errorEl) {
+    errorEl.textContent = latest
+      && ['FAILED', 'PARTIAL', 'STALE'].includes(latest.status)
+      ? `Latest monitoring run is ${latest.status.toLowerCase()}${latest.errorCategory ? ` (${latest.errorCategory})` : ''}. Review source availability and freshness before relying on findings.`
+      : '';
+  }
   const advisoryText = latest?.advisorySummary
     || 'Run monitoring to see a deterministic portfolio summary.';
   const advisorySourceText = latest?.advisorySource === 'AI_ADVISORY'
@@ -109,8 +129,10 @@ export function renderMonitoring({ summary, runs, alerts, findings }) {
     : latest?.advisorySource === 'DETERMINISTIC'
       ? 'Deterministic fallback summary; no external AI summary was used.'
       : '';
-  document.querySelector('#monitoring-advisory').textContent = advisoryText;
-  document.querySelector('#monitoring-advisory-source').textContent = advisorySourceText;
+  const advisoryEl = document.querySelector('#monitoring-advisory');
+  if (advisoryEl) advisoryEl.textContent = advisoryText;
+  const advisorySourceEl = document.querySelector('#monitoring-advisory-source');
+  if (advisorySourceEl) advisorySourceEl.textContent = advisorySourceText;
   renderAlerts(alerts, canOperate);
   renderFindings(findings);
   renderHistory(runs, canOperate);

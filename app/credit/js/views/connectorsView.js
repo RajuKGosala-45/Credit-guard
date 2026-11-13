@@ -7,9 +7,12 @@ import {
   getV2SchedulerStatus,
   triggerV2SchedulerCycle
 } from '../api.js';
+import { recordExtractionRun, state, updateConnectorSyncTimestamp } from '../state.js';
+import { escapeHTML } from '../utils.js';
 
 let activeDiscoveredMappings = [];
 let activeDiscoveredSourceId = 'FILE-CSV-JSON-UPLOAD';
+let schedulerCycleInFlight = false;
 
 export async function renderDataSourcesPanel(container) {
   if (!container) return;
@@ -24,6 +27,7 @@ export async function renderDataSourcesPanel(container) {
           </div>
           <button id="refresh-connectors-btn" class="button secondary" type="button">Refresh connectors</button>
         </div>
+        <p id="connectors-action-message" class="form-message" role="status" style="margin-bottom: 0.75rem;"></p>
         <p class="muted">
           Connect enterprise ERP systems, SAP S/4HANA OData services, SAP BTP Destinations, and structured file exports into the 3-layer FIN-FSCM-CR canonical pipeline (RAW → CANONICAL → CALCULATION).
         </p>
@@ -48,9 +52,8 @@ export async function renderDataSourcesPanel(container) {
         </div>
       </section>
 
-      <!-- ROW 2: TWO SIDE-BY-SIDE SECTIONS -->
-      <div class="connectors-row-2" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; align-items: start;">
-        <!-- LEFT CARD: STRUCTURED ERP FILE CONNECTOR -->
+      <!-- ROW 2: STRUCTURED ERP FILE CONNECTOR -->
+      <div class="connectors-row-2" style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: start;">
         <section class="card" style="height: 100%;">
           <div class="card-heading">
             <div>
@@ -101,27 +104,6 @@ export async function renderDataSourcesPanel(container) {
           </div>
           <p id="connector-sync-message" class="form-message" role="status" style="margin-top: 1rem;"></p>
         </section>
-
-        <!-- RIGHT CARD: AUTONOMOUS DAEMON -->
-        <section class="card" style="height: 100%;">
-          <div class="card-heading">
-            <div>
-              <p class="eyebrow">AUTONOMOUS DAEMON · 5-MINUTE HEARTBEAT</p>
-              <h2>Autonomous Credit Monitoring Scheduler</h2>
-            </div>
-            <div class="document-actions">
-              <button id="refresh-scheduler-btn" class="button secondary" type="button">Refresh Status</button>
-              <button id="trigger-scheduler-btn" class="button primary" type="button">Run Cycle Now</button>
-            </div>
-          </div>
-          <p class="muted">
-            Continuously executes delta data extraction, recalculates deterministic FIN-FSCM-CR exposure snapshots across all Business Partners, and dispatches monitoring runs with database mutex slot locking to prevent duplicate jobs.
-          </p>
-          <div id="scheduler-status-grid" class="kpi-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem;">
-            <div class="kpi-card"><span class="kpi-label">Daemon Status</span><span class="kpi-value">Loading…</span></div>
-          </div>
-          <p id="scheduler-action-message" class="form-message" role="status" style="margin-top: 0.75rem;"></p>
-        </section>
       </div>
     </div>
   `;
@@ -162,6 +144,7 @@ async function loadConnectorsList(container) {
   const kpiGrid = container.querySelector('#connectors-status-grid');
   try {
     const data = await getV2Connectors();
+    state.v2Connectors = data;
     const sources = data.sources || [];
     kpiGrid.style.cssText = 'display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem;';
     kpiGrid.innerHTML = `
@@ -194,22 +177,32 @@ async function loadConnectorsList(container) {
       </div>
     `;
 
-    tbody.innerHTML = sources.map(s => `
+    tbody.innerHTML = sources.map(s => {
+      const isStandby = String(s.status || '').toUpperCase() === 'STANDBY';
+      const lastSyncedLabel = s.last_sync_at
+        ? new Date(s.last_sync_at).toLocaleString()
+        : (isStandby ? 'Never (Not connected)' : 'Not yet synced');
+      const sourceIdHtml = s.source_id === 'MOCK-SAP-FIN-FSCM'
+        ? `<code>${escapeHTML(s.source_id)}</code><br><small class="muted">Simulator ID: <code>MOCK-S4-001</code></small>`
+        : `<code>${escapeHTML(s.source_id)}</code>`;
+      return `
       <tr>
-        <td><code>${s.source_id}</code></td>
-        <td><strong>${s.source_name}</strong></td>
-        <td><span class="pill ${s.source_type === 'FILE' ? 'primary' : 'warning'}">${s.source_type}</span></td>
-        <td><code>${s.connection_config_ref}</code></td>
-        <td><span class="pill ${s.status === 'ACTIVE' ? 'success' : 'neutral'}">${s.status}</span></td>
-        <td>${s.last_sync_at ? new Date(s.last_sync_at).toLocaleString() : 'Never'}</td>
+        <td>${sourceIdHtml}</td>
+        <td><strong>${escapeHTML(s.source_name)}</strong></td>
+        <td><span class="pill ${s.source_type === 'FILE' ? 'primary' : 'warning'}">${escapeHTML(s.source_type)}</span></td>
+        <td><code>${escapeHTML(s.connection_config_ref)}</code></td>
+        <td><span class="pill ${s.status === 'ACTIVE' ? 'success' : 'neutral'}">${escapeHTML(s.status)}</span></td>
+        <td>${escapeHTML(lastSyncedLabel)}</td>
         <td>
-          <button class="button secondary test-conn-btn" data-source-id="${s.source_id}" data-source-type="${s.source_type}" type="button" style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Test</button>
-          <button class="button secondary sync-conn-btn" data-source-id="${s.source_id}" data-source-type="${s.source_type}" type="button" style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Sync</button>
+          <button class="button secondary test-conn-btn" data-source-id="${escapeHTML(s.source_id)}" data-source-type="${escapeHTML(s.source_type)}" type="button" style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Test</button>
+          <button class="button secondary sync-conn-btn" data-source-id="${escapeHTML(s.source_id)}" data-source-type="${escapeHTML(s.source_type)}" type="button" style="padding: 0.25rem 0.6rem; font-size: 0.85rem;">Sync</button>
         </td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" class="form-message error">${err.message || 'Failed to load connectors.'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="form-message error">${escapeHTML(err.message || 'Failed to load connectors.')}</td></tr>`;
+    throw err;
   }
 }
 
@@ -218,39 +211,162 @@ export async function loadSchedulerStatus(container = document) {
   if (!grid) return;
   try {
     const sched = await getV2SchedulerStatus();
-    const isRunning = sched.status === 'RUNNING';
+    state.schedulerStatus = sched;
+    const schedState = sched.state
+      || (sched.lastRunStatus === 'FAILED' ? 'ERROR' : (sched.status === 'RUNNING' ? 'RUNNING' : 'IDLE'));
+    const pillClass = schedState === 'RUNNING' ? 'success' : (schedState === 'ERROR' ? 'error' : 'neutral');
+    const lastCycle = sched.lastCycleTime || sched.lastCompletedAt || sched.lastRunAt;
+    const nextCycle = sched.nextCycleTime || sched.nextRunAt;
+    const lastErrorText = sched.lastError || sched.lastRunError;
     grid.innerHTML = `
       <div class="kpi-card">
         <span class="kpi-label">Daemon Status</span>
-        <span class="kpi-value"><span class="pill ${isRunning ? 'success' : 'warning'}">${sched.status || 'STANDBY'}</span></span>
-        <span class="kpi-subtext">Interval: ${sched.intervalMinutes ?? 5} min (${sched.intervalMs ?? 300000} ms)</span>
+        <span class="kpi-value"><span class="pill ${pillClass}">${escapeHTML(schedState)}</span></span>
+        <span class="kpi-subtext">Interval: ${escapeHTML(sched.intervalMinutes ?? 5)} min (${escapeHTML(sched.intervalMs ?? 300000)} ms)</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Cycle Telemetry</span>
-        <span class="kpi-value">${sched.successfulRuns ?? 0} / ${sched.totalRuns ?? 0}</span>
-        <span class="kpi-subtext">Succeeded · ${sched.skippedRuns ?? 0} Skipped · ${sched.failedRuns ?? 0} Failed</span>
+        <span class="kpi-value">${escapeHTML(sched.successfulRuns ?? 0)} / ${escapeHTML(sched.totalRuns ?? 0)}</span>
+        <span class="kpi-subtext">Succeeded · ${escapeHTML(sched.skippedRuns ?? 0)} Skipped · ${escapeHTML(sched.failedRuns ?? 0)} Failed</span>
       </div>
       <div class="kpi-card">
-        <span class="kpi-label">Last Execution</span>
-        <span class="kpi-value" style="font-size: 1rem;">${sched.lastCompletedAt ? new Date(sched.lastCompletedAt).toLocaleTimeString() : 'Pending initial'}</span>
-        <span class="kpi-subtext">Status: ${sched.lastRunStatus || 'NONE'} (${sched.lastRunDurationMs ?? 0} ms)</span>
+        <span class="kpi-label">Last Execution (scheduler cycle)</span>
+        <span class="kpi-value" style="font-size: 1rem;">${lastCycle ? escapeHTML(new Date(lastCycle).toLocaleTimeString()) : 'Pending initial'}</span>
+        <span class="kpi-subtext">Status: ${escapeHTML(sched.lastRunStatus || sched.lastResult?.status || 'NONE')} · Scheduler cycle duration: ${escapeHTML(sched.lastRunDurationMs ?? 0)} ms${lastErrorText ? ` · Error: ${escapeHTML(lastErrorText)}` : ''}</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Next Scheduled Run</span>
-        <span class="kpi-value" style="font-size: 1rem;">${sched.nextRunAt ? new Date(sched.nextRunAt).toLocaleTimeString() : '—'}</span>
+        <span class="kpi-value" style="font-size: 1rem;">${nextCycle ? escapeHTML(new Date(nextCycle).toLocaleTimeString()) : '—'}</span>
         <span class="kpi-subtext">Slot Mutex Protected</span>
       </div>
     `;
   } catch (err) {
-    grid.innerHTML = `<div class="kpi-card"><span class="kpi-label">Daemon Status</span><span class="kpi-subtext error">${err.message}</span></div>`;
+    state.schedulerStatus = { status: 'ERROR', state: 'ERROR', lastError: err.message };
+    grid.innerHTML = `
+      <div class="kpi-card" style="grid-column: 1 / -1;">
+        <span class="kpi-label">Daemon Status</span>
+        <span class="kpi-value"><span class="pill error">ERROR</span></span>
+        <span class="kpi-subtext error" style="margin-top: 0.35rem;">${escapeHTML(err.message || 'Scheduler status endpoint failed or timed out.')}</span>
+        <div style="margin-top: 0.6rem;">
+          <button id="retry-scheduler-status-btn" class="button secondary" type="button" style="padding: 0.3rem 0.75rem; font-size: 0.85rem;">Retry</button>
+        </div>
+      </div>
+    `;
+    const retryBtn = grid.querySelector('#retry-scheduler-status-btn');
+    retryBtn?.addEventListener('click', () => loadSchedulerStatus(container).catch(() => {}));
   }
+}
+
+function attachSchedulerEvents(container) {
+  const refreshSchedBtn = container.querySelector('#refresh-scheduler-btn');
+  const triggerSchedBtn = container.querySelector('#trigger-scheduler-btn');
+  const schedMsgEl = container.querySelector('#scheduler-action-message');
+
+  refreshSchedBtn?.addEventListener('click', async () => {
+    refreshSchedBtn.disabled = true;
+    const origText = refreshSchedBtn.textContent || 'Refresh Status';
+    refreshSchedBtn.textContent = 'Refreshing…';
+    if (schedMsgEl) {
+      schedMsgEl.textContent = 'Refreshing scheduler daemon status…';
+      schedMsgEl.className = 'form-message';
+    }
+    try {
+      await loadSchedulerStatus(container);
+      if (schedMsgEl && state.schedulerStatus?.state !== 'ERROR') {
+        schedMsgEl.textContent = `Scheduler status updated (${state.schedulerStatus?.state || 'IDLE'}) at ${new Date().toLocaleTimeString()}.`;
+        schedMsgEl.className = 'form-message success';
+      } else if (schedMsgEl && state.schedulerStatus?.lastError) {
+        schedMsgEl.textContent = `Scheduler status failed: ${state.schedulerStatus.lastError}`;
+        schedMsgEl.className = 'form-message error';
+      }
+    } catch (err) {
+      if (schedMsgEl) {
+        schedMsgEl.textContent = `Scheduler refresh failed: ${err.message}`;
+        schedMsgEl.className = 'form-message error';
+      }
+    } finally {
+      refreshSchedBtn.disabled = false;
+      refreshSchedBtn.textContent = origText;
+    }
+  });
+
+  triggerSchedBtn?.addEventListener('click', async () => {
+    if (schedulerCycleInFlight) return;
+    schedulerCycleInFlight = true;
+    triggerSchedBtn.disabled = true;
+    triggerSchedBtn.textContent = 'Executing Cycle…';
+    if (schedMsgEl) {
+      schedMsgEl.textContent = 'Running autonomous exposure recalculation and monitoring job…';
+      schedMsgEl.className = 'form-message';
+    }
+    const startedAt = new Date().toISOString();
+    const startMs = Date.now();
+    try {
+      const outcome = await triggerV2SchedulerCycle(true);
+      const finishedAt = outcome?.run?.completedAt || outcome?.run?.startedAt || new Date().toISOString();
+      const durationMs = outcome?.durationMs ?? (Date.now() - startMs);
+      const runStatus = outcome?.status === 'FAILED' ? 'FAILED' : 'COMPLETED';
+      recordExtractionRun({
+        runId: outcome?.runId || `SCHED-CYCLE:${finishedAt}`,
+        startedAt,
+        finishedAt,
+        durationMs,
+        sourceId: 'CAP-HANA-CDS',
+        sourceName: 'Autonomous Credit Monitoring Scheduler',
+        status: runStatus,
+        recordCounts: { snapshots: outcome?.snapshotCount ?? 0 },
+        error: outcome?.error || null,
+        triggeredBy: 'MANUAL'
+      });
+      updateConnectorSyncTimestamp('ACTIVE', finishedAt);
+      if (schedMsgEl) {
+        schedMsgEl.textContent = `Cycle ${outcome.status}: Slot ${outcome.slotKey} | Run ID: ${outcome.runId || 'N/A'} | Snapshots Recalculated: ${outcome.snapshotCount ?? 0} | Duration: ${durationMs} ms`;
+        schedMsgEl.className = 'form-message success';
+      }
+      await loadSchedulerStatus(container);
+      const connectorsHost = document.querySelector('#connectors-workspace');
+      if (connectorsHost && connectorsHost.hasChildNodes()) {
+        await loadConnectorsList(connectorsHost).catch(() => {});
+      }
+      const mockRegEl = document.querySelector('#mock-sap-registration');
+      if (mockRegEl) mockRegEl.textContent = 'Registered source';
+      if (runStatus === 'COMPLETED') {
+        const mockMonBtn = document.querySelector('#run-mock-sap-monitoring');
+        if (mockMonBtn && state.session?.permissions?.canMonitor === true) {
+          mockMonBtn.hidden = false;
+          mockMonBtn.disabled = false;
+        }
+        const mockMonStatus = document.querySelector('#mock-sap-monitoring-status');
+        if (mockMonStatus && !state.mockSapMonitoring) {
+          mockMonStatus.textContent = 'Shared extraction run completed; records are ready for an explicit monitoring run.';
+        }
+      }
+    } catch (err) {
+      recordExtractionRun({
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startMs,
+        sourceId: 'CAP-HANA-CDS',
+        sourceName: 'Autonomous Credit Monitoring Scheduler',
+        status: 'FAILED',
+        error: err.message,
+        triggeredBy: 'MANUAL'
+      });
+      if (schedMsgEl) {
+        schedMsgEl.textContent = `Autonomous cycle failed: ${err.message}`;
+        schedMsgEl.className = 'form-message error';
+      }
+    } finally {
+      schedulerCycleInFlight = false;
+      triggerSchedBtn.disabled = false;
+      triggerSchedBtn.textContent = 'Run Cycle Now';
+    }
+  });
 }
 
 function attachConnectorEvents(container) {
   const refreshBtn = container.querySelector('#refresh-connectors-btn');
-  const refreshSchedBtn = container.querySelector('#refresh-scheduler-btn');
-  const triggerSchedBtn = container.querySelector('#trigger-scheduler-btn');
-  const schedMsgEl = container.querySelector('#scheduler-action-message');
+  const connMsgEl = container.querySelector('#connectors-action-message');
   const fileInput = container.querySelector('#structured-file-input');
   const selectedLabel = container.querySelector('#selected-file-label');
   const discoverBtn = container.querySelector('#discover-schema-btn');
@@ -260,31 +376,29 @@ function attachConnectorEvents(container) {
   let uploadedFileContent = null;
   let uploadedFilename = '';
 
-  refreshBtn?.addEventListener('click', () => loadConnectorsList(container));
-  refreshSchedBtn?.addEventListener('click', () => loadSchedulerStatus(container));
-
-  triggerSchedBtn?.addEventListener('click', async () => {
-    triggerSchedBtn.disabled = true;
-    triggerSchedBtn.textContent = 'Executing Cycle…';
-    if (schedMsgEl) {
-      schedMsgEl.textContent = 'Running autonomous exposure recalculation and monitoring job…';
-      schedMsgEl.className = 'form-message';
+  refreshBtn?.addEventListener('click', async () => {
+    refreshBtn.disabled = true;
+    const origText = refreshBtn.textContent || 'Refresh connectors';
+    refreshBtn.textContent = 'Refreshing…';
+    if (connMsgEl) {
+      connMsgEl.textContent = 'Refreshing connector registry…';
+      connMsgEl.className = 'form-message';
     }
     try {
-      const outcome = await triggerV2SchedulerCycle(true);
-      if (schedMsgEl) {
-        schedMsgEl.textContent = `Cycle ${outcome.status}: Slot ${outcome.slotKey} | Run ID: ${outcome.runId || 'N/A'} | Snapshots Recalculated: ${outcome.snapshotCount ?? 0} | Duration: ${outcome.durationMs ?? 0} ms`;
-        schedMsgEl.className = 'form-message success';
+      await loadConnectorsList(container);
+      const count = state.v2Connectors?.sources?.length ?? 0;
+      if (connMsgEl) {
+        connMsgEl.textContent = `Connector registry refreshed (${count} registered sources as of ${new Date().toLocaleTimeString()}).`;
+        connMsgEl.className = 'form-message success';
       }
-      await loadSchedulerStatus(container);
     } catch (err) {
-      if (schedMsgEl) {
-        schedMsgEl.textContent = `Autonomous cycle failed: ${err.message}`;
-        schedMsgEl.className = 'form-message error';
+      if (connMsgEl) {
+        connMsgEl.textContent = `Failed to refresh connectors: ${err.message}`;
+        connMsgEl.className = 'form-message error';
       }
     } finally {
-      triggerSchedBtn.disabled = false;
-      triggerSchedBtn.textContent = 'Run Cycle Now';
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = origText;
     }
   });
 
@@ -402,12 +516,37 @@ function attachConnectorEvents(container) {
       const sourceType = syncBtn.dataset.sourceType;
       syncBtn.disabled = true;
       syncBtn.textContent = 'Syncing…';
+      const startedAt = new Date().toISOString();
+      const startMs = Date.now();
       try {
         const res = await syncV2Connector({ sourceId, sourceType });
+        const finishedAt = new Date().toISOString();
+        recordExtractionRun({
+          runId: res.syncBatchId || `${sourceId}:${finishedAt}`,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - startMs,
+          sourceId,
+          sourceName: sourceId,
+          status: 'COMPLETED',
+          recordCounts: res.counts || null,
+          triggeredBy: 'MANUAL'
+        });
+        updateConnectorSyncTimestamp(sourceId, finishedAt);
         messageEl.textContent = `Sync Successful! Batch: ${res.syncBatchId} | Partners: ${res.counts.partnersUpserted} | Exposure Items: ${res.counts.exposureItemsUpserted} | Snapshots: ${res.counts.snapshotsUpdated}`;
         messageEl.className = 'form-message success';
         await loadConnectorsList(container);
       } catch (err) {
+        recordExtractionRun({
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - startMs,
+          sourceId,
+          sourceName: sourceId,
+          status: 'FAILED',
+          error: err.message,
+          triggeredBy: 'MANUAL'
+        });
         messageEl.textContent = `Sync Failed: ${err.message}`;
         messageEl.className = 'form-message error';
       } finally {

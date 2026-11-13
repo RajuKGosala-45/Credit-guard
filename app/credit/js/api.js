@@ -16,14 +16,31 @@ function isStateChangingMethod(method) {
   return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
 }
 
-async function fetchSameOrigin(path, options) {
+async function fetchSameOrigin(path, options = {}) {
+  const { timeoutMs, ...fetchOptions } = options;
+  let controller = null;
+  let timerId = null;
+  let didTimeout = false;
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0 && typeof AbortController === 'function' && !fetchOptions.signal) {
+    controller = new AbortController();
+    fetchOptions.signal = controller.signal;
+    timerId = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, timeoutMs);
+  }
   try {
     return await fetch(path, {
-      ...options,
-      credentials: options.credentials || 'same-origin'
+      ...fetchOptions,
+      credentials: fetchOptions.credentials || 'same-origin'
     });
   } catch {
+    if (didTimeout) {
+      throw new Error(`Request to ${path} timed out after ${Math.round(timeoutMs / 1000)}s.`);
+    }
     throw new Error('Cannot reach Credit Guard. Check that the server is running on port 4005, then try again.');
+  } finally {
+    if (timerId !== null) clearTimeout(timerId);
   }
 }
 
@@ -136,6 +153,193 @@ export const getLimitRequests = status => request(`/api/limit-requests${status ?
 export const getApprovalHistory = requestId => request(
   `/api/limit-requests/${encodeURIComponent(requestId)}/history`
 );
+
+let simulatedExtractionFailure = false;
+
+export function setSimulatedExtractionFailure(shouldFail) {
+  simulatedExtractionFailure = Boolean(shouldFail);
+}
+
+/**
+ * CENTRAL DATA SERVICE (Single Source of Truth)
+ * ----------------------------------------------------------------------------
+ * NOTE: This is the SINGLE place to replace with the real SAP BTP / CAP /
+ * HANA CDS extraction call in production.
+ *
+ * ARCHITECTURE NOTE:
+ * In production, the 5-minute extraction and monitoring cycle should run as a
+ * backend scheduled job (for example, a CAP / SAP BTP Job Scheduler or cron
+ * worker), with the frontend only polling or subscribing for the persisted
+ * result. The frontend 5-minute timer is used only for this demo.
+ *
+ * Returns the deterministic demo portfolio dataset (customers, exposures,
+ * limits, overdue invoices, and limit requests) stamped with a fresh
+ * retrievedAt ISO timestamp.
+ */
+const STAGING_CUSTOMER_ID_RE = /^MS-C/i;
+
+function isMockSapStagingCustomer(customer) {
+  if (!customer || typeof customer !== 'object') return false;
+  return STAGING_CUSTOMER_ID_RE.test(String(customer.ID || ''))
+    || customer.sourceSystem === 'MOCK_SAP'
+    || customer.isMockSapStaging === true;
+}
+
+function normalizeCountryLabel(country) {
+  const raw = String(country || '').trim();
+  if (raw.toUpperCase() === 'IN') return 'India';
+  return raw || 'Unknown';
+}
+
+function computeCanonicalGroupExposure(customers, groupKey) {
+  const grouped = new Map();
+  for (const c of customers) {
+    const label = groupKey === 'country' ? normalizeCountryLabel(c.country) : (c.companyCode || 'Unknown');
+    const currency = c.currency || 'INR';
+    const row = grouped.get(label) || {
+      label,
+      currency,
+      exposure: 0,
+      creditLimit: 0,
+      customers: 0
+    };
+    row.exposure += Number(c.exposure) || 0;
+    row.creditLimit += Number(c.creditLimit) || 0;
+    row.customers += 1;
+    grouped.set(label, row);
+  }
+  return [...grouped.values()]
+    .map(row => ({
+      ...row,
+      utilisation: row.creditLimit > 0 ? row.exposure / row.creditLimit : null
+    }))
+    .sort((a, b) => b.exposure - a.exposure);
+}
+
+/**
+ * Option A Staging Isolation:
+ * Keeps active Credit Guard portfolio strictly to canonical customers (13)
+ * and separates synthetic Mock SAP staging customers (MS-C*) into staging state
+ * so active KPIs and exposure breakdowns are never inflated.
+ */
+export function separateMockSapStagingPortfolio(dashboard = {}, rawCustomers = []) {
+  const list = Array.isArray(rawCustomers) ? rawCustomers : [];
+  const mockSapStagingCustomers = [];
+  const customers = [];
+
+  for (const item of list) {
+    if (isMockSapStagingCustomer(item)) {
+      mockSapStagingCustomers.push({
+        ...item,
+        country: normalizeCountryLabel(item.country),
+        isMockSapStaging: true
+      });
+    } else {
+      customers.push(item);
+    }
+  }
+
+  if (mockSapStagingCustomers.length === 0) {
+    return {
+      dashboard,
+      customers,
+      mockSapStagingCustomers
+    };
+  }
+
+  const totalExposure = customers.reduce((sum, c) => sum + (Number(c.exposure) || 0), 0);
+  const totalLimit = customers.reduce((sum, c) => sum + (Number(c.creditLimit) || 0), 0);
+  const overdueAmount = customers.reduce((sum, c) => sum + (Number(c.overdueAmount) || 0), 0);
+  const currency = customers[0]?.currency || dashboard?.kpis?.currency || 'INR';
+
+  const recomputedKpis = {
+    ...(dashboard?.kpis || {}),
+    currency,
+    totalExposure,
+    totalLimit,
+    overallUtilisation: totalLimit > 0 ? totalExposure / totalLimit : null,
+    availableCredit: (totalLimit - totalExposure).toFixed(2),
+    overdueAmount: overdueAmount.toFixed(2),
+    customersBreached: customers.filter(c => c.status === 'BREACH').length,
+    warningCustomers: customers.filter(c => c.status === 'WARNING').length,
+    criticalCustomers: customers.filter(c => Array.isArray(c.flags)
+      ? c.flags.includes('CRITICAL')
+      : (Number(c.creditLimit) > 0 && (Number(c.exposure) / Number(c.creditLimit)) >= 1.2)).length,
+    overdueInvoiceCount: customers.reduce((sum, c) => sum + (Number(c.overdueInvoiceCount) || 0), 0),
+    manualReviewCustomers: customers.filter(c => c.status === 'MANUAL_REVIEW' || Number(c.creditLimit) === 0).length,
+    overdueRiskCustomers: customers.filter(c => Array.isArray(c.flags)
+      ? c.flags.includes('OVERDUE_RISK')
+      : (Number(c.overdueAmount) || 0) > 0).length,
+    healthyCustomers: customers.filter(c => c.status === 'HEALTHY' || c.status === 'OK').length,
+    customerCount: customers.length
+  };
+
+  const recomputedExposure = {
+    country: computeCanonicalGroupExposure(customers, 'country'),
+    companyCode: computeCanonicalGroupExposure(customers, 'companyCode'),
+    customer: customers
+      .map(c => ({
+        label: c.name,
+        ID: c.ID,
+        currency: c.currency || currency,
+        exposure: Number(c.exposure) || 0,
+        creditLimit: Number(c.creditLimit) || 0,
+        utilisation: Number(c.creditLimit) > 0 ? (Number(c.exposure) || 0) / Number(c.creditLimit) : null
+      }))
+      .sort((a, b) => b.exposure - a.exposure)
+  };
+
+  return {
+    dashboard: {
+      ...(dashboard || {}),
+      kpis: recomputedKpis,
+      exposure: recomputedExposure
+    },
+    customers,
+    mockSapStagingCustomers
+  };
+}
+
+export async function fetchPortfolioData() {
+  if (simulatedExtractionFailure || globalThis.__simulateExtractionFailure === true) {
+    throw new Error('Simulated extraction failure: CAP database (demo) endpoint did not respond.');
+  }
+
+  const [rawDashboard, rawCustomers, rawRequests, mockSap, v2Connectors, schedulerStatus] = await Promise.all([
+    getDashboard(),
+    getCustomers(),
+    getLimitRequests(),
+    getMockSap().catch(() => null),
+    getV2Connectors().catch(() => null),
+    getV2SchedulerStatus().catch(() => null)
+  ]);
+
+  const { dashboard, customers, mockSapStagingCustomers } = separateMockSapStagingPortfolio(rawDashboard, rawCustomers);
+
+  const requests = await Promise.all((rawRequests || []).map(async reqItem => ({
+    ...reqItem,
+    auditHistory: reqItem.status === 'Pending' ? [] : await getApprovalHistory(reqItem.ID).catch(() => [])
+  })));
+
+  const retrievedAt = new Date().toISOString();
+  return {
+    source: 'CAP database (demo)',
+    retrievedAt,
+    dashboard,
+    customers,
+    mockSapStagingCustomers,
+    v2Connectors,
+    schedulerStatus,
+    exposures: dashboard?.exposure || {},
+    limits: (customers || []).map(c => ({ customerId: c.ID, creditLimit: c.creditLimit, currency: c.currency })),
+    invoices: {
+      overdueInvoiceCount: dashboard?.kpis?.overdueInvoiceCount || 0,
+      overdueAmount: dashboard?.kpis?.overdueAmount || 0
+    },
+    requests,
+    mockSap
+  };
+}
 function limitRequestFingerprint(payload) {
   return JSON.stringify({
     customerId: payload.customerId,
@@ -232,7 +436,7 @@ export const checkGeminiConnectivity = () => request('/api/ai/gemini/connectivit
 });
 
 // Phase 6 V2 Canonical, Connectors & Workflow API Client Methods
-export const getV2Connectors = () => request('/api/v2/connectors');
+export const getV2Connectors = (timeoutMs = 10000) => request('/api/v2/connectors', { timeoutMs });
 export const testV2Connector = payload => request('/api/v2/connectors/test', {
   method: 'POST',
   body: JSON.stringify(payload)
@@ -293,9 +497,10 @@ export const queryV2Agent = payload => request('/api/v2/agent/query', {
   body: JSON.stringify(payload)
 });
 
-export const getV2SchedulerStatus = () => request('/api/v2/monitoring/scheduler-status');
-export const triggerV2SchedulerCycle = (force = true) => request('/api/v2/monitoring/scheduler-trigger', {
+export const getV2SchedulerStatus = (timeoutMs = 10000) => request('/api/v2/monitoring/scheduler-status', { timeoutMs });
+export const triggerV2SchedulerCycle = (force = true, timeoutMs = 10000) => request('/api/v2/monitoring/scheduler-trigger', {
   method: 'POST',
+  timeoutMs,
   body: JSON.stringify({ force })
 });
 

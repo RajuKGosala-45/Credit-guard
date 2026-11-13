@@ -1,6 +1,13 @@
 import * as api from './api.js';
-import { state } from './state.js';
-import { renderKpis, renderExposure, handleExposureGroup } from './views/dashboard.js';
+import {
+  AUTO_REFRESH_INTERVAL_MS,
+  FRESHNESS_EVAL_INTERVAL_MS,
+  computeFreshnessState,
+  recordExtractionRun,
+  state,
+  updateConnectorSyncTimestamp
+} from './state.js';
+import { renderKpis, renderCreditOverview, renderExposure, handleExposureGroup } from './views/dashboard.js';
 import { renderMonitoring } from './views/monitoring.js';
 import { renderCustomers, handleCustomerClick } from './views/customers.js';
 import {
@@ -21,7 +28,7 @@ const pageCopy = Object.freeze({
   ],
   overview: [
     'Credit overview',
-    'Review a controlled portfolio across five legal entities. Data freshness is not supplied by this local demo.'
+    'Summary of portfolio credit exposure, utilisation health, and priority items requiring attention.'
   ],
   dashboard: [
     'Portfolio & Monitoring',
@@ -38,6 +45,10 @@ const pageCopy = Object.freeze({
   simulator: [
     'SAP BTP & HANA CDS',
     'Inspect synthetic SAP S/4HANA source entities, canonical CAP / HANA ingestion runs, and deterministic monitoring.'
+  ],
+  audit: [
+    'AI Audit History',
+    'Review agent execution history, memory, and enterprise connector status.'
   ]
 });
 
@@ -53,16 +64,8 @@ function showError(message) {
 }
 
 const tabSections = {
-  chat: [
-    { id: 'sec-chat-control', label: 'AI Credit Control' },
-    { id: 'sec-audit-memory', label: 'Audit & Memory' },
-    { id: 'sec-enterprise-integration', label: 'Enterprise Integration' }
-  ],
-  overview: [
-    { id: 'sec-overview-kpis', label: 'Portfolio KPIs' },
-    { id: 'sec-overview-exposure', label: 'Country & Entity Exposure' },
-    { id: 'sec-overview-risk', label: 'Risk Summary & Alerts' }
-  ],
+  chat: [],
+  overview: [],
   dashboard: [
     { id: 'sec-monitoring', label: 'Manual Credit Monitoring' },
     { id: 'sec-limit-request', label: 'Request Limit Change' }
@@ -80,6 +83,11 @@ const tabSections = {
     { id: 'sec-scheduler', label: 'Autonomous Scheduler Daemon' },
     { id: 'sec-sap-integration', label: 'SAP S/4HANA & FSCM Integration' }
   ],
+  audit: [
+    { id: 'sec-audit-memory', label: 'Audit & Memory' },
+    { id: 'sec-enterprise-integration', label: 'Enterprise Integration' },
+    { id: 'sec-execution-status', label: 'Execution Status' }
+  ],
   home: []
 };
 
@@ -87,7 +95,7 @@ function renderSectionShortcuts(tab) {
   const bar = document.querySelector('#section-shortcuts-bar');
   if (!bar) return;
   const sections = tabSections[tab] || [];
-  if (sections.length === 0 || tab === 'home') {
+  if (sections.length === 0 || tab === 'home' || tab === 'chat') {
     bar.style.display = 'none';
     return;
   }
@@ -114,10 +122,34 @@ function scrollWorkspaceToSection(el) {
   }
 }
 
+function switchAuditSubtab(targetId) {
+  const sections = {
+    'sec-audit-memory': document.querySelector('#sec-audit-memory'),
+    'sec-enterprise-integration': document.querySelector('#sec-enterprise-integration'),
+    'sec-execution-status': document.querySelector('#sec-execution-status')
+  };
+
+  const activeId = sections[targetId] ? targetId : 'sec-audit-memory';
+
+  Object.entries(sections).forEach(([id, el]) => {
+    if (el) {
+      el.style.display = id === activeId ? 'block' : 'none';
+    }
+  });
+
+  document.querySelectorAll('#section-shortcuts-bar .shortcut-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.target === activeId);
+  });
+}
+
 document.querySelector('#section-shortcuts-bar')?.addEventListener('click', e => {
   const btn = e.target.closest('[data-target]');
   if (!btn) return;
   const targetId = btn.dataset.target;
+  if (state.currentTab === 'audit') {
+    switchAuditSubtab(targetId);
+    return;
+  }
   const el = document.getElementById(targetId);
   if (el) {
     scrollWorkspaceToSection(el);
@@ -128,6 +160,7 @@ document.querySelector('#section-shortcuts-bar')?.addEventListener('click', e =>
 
 function switchTab(tabName) {
   if (!tabName) return;
+  if (tabName === 'audit-history' || tabName === 'ai-audit-history') tabName = 'audit';
   state.currentTab = tabName;
   const isHome = tabName === 'home';
 
@@ -161,17 +194,18 @@ function switchTab(tabName) {
     panel.style.removeProperty('display');
   });
 
-  if (state.currentTab === 'overview') {
-    Promise.all([loadPortfolio(), loadMonitoring()]).catch(error => showError(error.message));
-  }
-  if (state.currentTab === 'dashboard') {
-    Promise.all([loadMonitoring(), loadPortfolio()]).catch(error => showError(error.message));
-  }
-  if (state.currentTab === 'analysis') {
-    loadPortfolio().catch(error => showError(error.message));
-  }
-  if (state.currentTab === 'approvals') {
-    loadApprovals().catch(error => showError(error.message));
+  if (state.currentTab === 'overview' || state.currentTab === 'dashboard' || state.currentTab === 'analysis' || state.currentTab === 'approvals' || state.currentTab === 'chat') {
+    if (state.portfolioData) {
+      refreshPortfolio();
+      if (state.monitoringData) {
+        renderMonitoring({
+          ...state.monitoringData,
+          sharedState: buildSharedMonitoringState()
+        });
+      }
+    } else if (state.extractionStatus === 'IDLE') {
+      runExtractionAndMonitoringCycle({ trigger: 'tab-switch' }).catch(error => showError(error.message));
+    }
   }
   if (state.currentTab === 'simulator') {
     loadMockSap().catch(error => {
@@ -179,10 +213,14 @@ function switchTab(tabName) {
       showError(error.message);
     });
   }
-  if (state.currentTab === 'chat') {
-    Promise.all([loadPortfolio(), loadAgentHistory()]).catch(error => showError(error.message));
+  if (state.currentTab === 'audit') {
+    switchAuditSubtab('sec-audit-memory');
+    loadAgentHistory().catch(error => showError(error.message));
   }
 }
+
+window.switchTab = switchTab;
+window.switchAuditSubtab = switchAuditSubtab;
 
 function canAttemptExecutionRecovery(execution) {
   if (execution.recoveryStatus === 'AVAILABLE') return true;
@@ -192,40 +230,95 @@ function canAttemptExecutionRecovery(execution) {
   return Number.isFinite(updatedAt) && Date.now() - updatedAt > 60000;
 }
 
-function refreshPortfolio() {
-  renderKpis(state.dashboard.kpis);
-  renderExposure(state.dashboard, 'country', '#overview-country-exposure');
-  renderExposure(state.dashboard, 'companyCode', '#overview-company-exposure');
-  renderExposure(state.dashboard, state.exposureGroup);
-  renderExposure(state.dashboard, 'customer', '#customer-exposure-list');
-  renderCustomers(state.customers);
-  renderRequestCustomers(state.customers);
-  const lastUpdatedEl = document.querySelector('#last-updated');
-  if (lastUpdatedEl) {
-    const runTime = state.mockSap?.latestRun?.completedAt || state.mockSap?.latestRun?.startedAt;
-    if (runTime) {
-      const d = new Date(runTime);
-      lastUpdatedEl.textContent = Number.isNaN(d.getTime()) ? runTime : d.toLocaleTimeString();
-    } else {
-      lastUpdatedEl.textContent = 'UNKNOWN';
-    }
+function buildSharedMonitoringState(nowMs = Date.now()) {
+  const freshness = computeFreshnessState(state, nowMs);
+  return {
+    source: state.portfolioData?.source || 'CAP database (demo)',
+    retrievedAt: state.retrievedAt,
+    lastSuccessfulAt: state.lastSuccessfulAt,
+    freshnessStatus: freshness.status,
+    countdownPadded: freshness.countdownPadded
+  };
+}
+
+function renderFreshnessIndicator(nowMs = Date.now()) {
+  const freshness = computeFreshnessState(state, nowMs);
+  const badgeEl = document.querySelector('#freshness-badge');
+  const iconEl = document.querySelector('#freshness-icon');
+  const statusEl = document.querySelector('#last-updated');
+  const relativeEl = document.querySelector('#freshness-relative');
+  const countdownEl = document.querySelector('#freshness-countdown');
+  const tooltipEl = document.querySelector('#freshness-tooltip');
+  const autoRunEl = document.querySelector('#monitoring-autorun');
+
+  if (badgeEl) {
+    badgeEl.className = `freshness-badge freshness-badge--${freshness.tone}`;
+  }
+  if (iconEl) {
+    iconEl.textContent = freshness.icon;
+  }
+  if (statusEl) {
+    statusEl.textContent = freshness.status;
+  }
+  if (relativeEl) {
+    relativeEl.textContent = freshness.relativeText;
+  }
+  if (countdownEl) {
+    countdownEl.textContent = `Next refresh in ${freshness.countdownShort}`;
+  }
+  if (tooltipEl) {
+    tooltipEl.textContent = freshness.tooltip;
+  }
+  if (autoRunEl) {
+    autoRunEl.textContent = `Auto-run: ON · next run in ${freshness.countdownPadded}`;
   }
 }
 
-async function loadPortfolio() {
-  [state.dashboard, state.customers, state.mockSap] = await Promise.all([
-    api.getDashboard(),
-    api.getCustomers(),
-    api.getMockSap().catch(() => null)
-  ]);
+function applyPortfolioDataToStore(payload) {
+  state.portfolioData = payload;
+  state.retrievedAt = payload.retrievedAt;
+  state.lastSuccessfulAt = payload.retrievedAt;
+  state.extractionStatus = 'SUCCESS';
+  state.lastError = null;
+  state.dashboard = payload.dashboard;
+  state.customers = payload.customers;
+  state.requests = payload.requests;
+  state.mockSap = payload.mockSap;
+  state.mockSapStagingCustomers = payload.mockSapStagingCustomers || [];
+  if (payload.v2Connectors) state.v2Connectors = payload.v2Connectors;
+  if (payload.schedulerStatus) state.schedulerStatus = payload.schedulerStatus;
   refreshPortfolio();
+}
+
+function refreshPortfolio() {
+  if (state.dashboard) {
+    renderCreditOverview(state.dashboard, state.requests);
+    renderExposure(state.dashboard, state.exposureGroup);
+    renderExposure(state.dashboard, 'customer', '#customer-exposure-list');
+  }
+  if (Array.isArray(state.customers) && state.customers.length) {
+    renderCustomers(state.customers);
+    renderRequestCustomers(state.customers);
+  }
+  if (Array.isArray(state.requests) && state.session) {
+    renderApprovals(state.requests, state.session);
+  }
+  renderFreshnessIndicator();
+}
+
+async function loadPortfolio() {
+  const payload = await api.fetchPortfolioData();
+  applyPortfolioDataToStore(payload);
+  return payload;
 }
 
 async function loadSession() {
   state.session = await api.getSession();
   renderLimitRequestAvailability(state.session);
   renderChat(state.chatMessages, state.agentExecution, state.session.permissions);
-  await loadApprovals();
+  if (Array.isArray(state.requests) && state.requests.length) {
+    renderApprovals(state.requests, state.session);
+  }
 }
 
 async function loadApprovals() {
@@ -234,7 +327,13 @@ async function loadApprovals() {
     ...request,
     auditHistory: request.status === 'Pending' ? [] : await api.getApprovalHistory(request.ID)
   })));
+  if (state.portfolioData) {
+    state.portfolioData.requests = state.requests;
+  }
   renderApprovals(state.requests, state.session);
+  if (state.dashboard) {
+    renderCreditOverview(state.dashboard, state.requests);
+  }
 }
 
 async function loadCustomerApprovalHistory(customerId) {
@@ -245,20 +344,25 @@ async function loadCustomerApprovalHistory(customerId) {
   return histories.flat();
 }
 
-let initialMonitoringBootstrapped = false;
-
-async function loadMonitoring() {
+async function loadMonitoring({ triggerRun = false } = {}) {
   let [summary, runs, alerts] = await Promise.all([
     api.getMonitoringSummary(),
     api.getMonitoringRuns(),
     api.getMonitoringAlerts()
   ]);
-  if (!summary.latestRun && summary.canOperate && !initialMonitoringBootstrapped) {
-    initialMonitoringBootstrapped = true;
+  const shouldTriggerMonitoringRun = summary.canOperate && (triggerRun || !summary.latestRun);
+  if (shouldTriggerMonitoringRun) {
     try {
       const started = await api.runMonitoring();
       if (started.status === 'QUEUED' || started.status === 'RUNNING') {
-        await api.waitForMonitoringRun(started.id);
+        await api.waitForMonitoringRun(started.id, {
+          onStatus: current => {
+            const statusEl = document.querySelector('#monitoring-status');
+            if (statusEl) {
+              statusEl.textContent = `Monitoring run ${current.status.toLowerCase()} · waiting for a terminal result.`;
+            }
+          }
+        });
       }
       [summary, runs, alerts] = await Promise.all([
         api.getMonitoringSummary(),
@@ -266,16 +370,166 @@ async function loadMonitoring() {
         api.getMonitoringAlerts()
       ]);
     } catch {
-      // Keep default monitoring summary if initial background run cannot complete
+      // Retain existing monitoring summary if background run cannot complete
     }
   }
-  renderMonitoring({
+  state.monitoringData = {
     summary,
     runs,
     alerts,
     findings: summary.latestRun?.findings || []
+  };
+  renderMonitoring({
+    ...state.monitoringData,
+    sharedState: buildSharedMonitoringState()
   });
+  return state.monitoringData;
 }
+
+/**
+ * ARCHITECTURE NOTE:
+ * In production, the 5-minute extraction and monitoring cycle should run as a
+ * backend scheduled job (for example, an SAP BTP Job Scheduler or CAP cron job),
+ * with the frontend only polling or subscribing for the result. The frontend
+ * timer below is used only for this demo.
+ */
+let autoRefreshIntervalId = null;
+let freshnessEvalIntervalId = null;
+let countdownTickIntervalId = null;
+
+function resetAutoRefreshCountdown(nowMs = Date.now()) {
+  state.nextRunAt = new Date(nowMs + AUTO_REFRESH_INTERVAL_MS).toISOString();
+  if (autoRefreshIntervalId !== null) {
+    clearInterval(autoRefreshIntervalId);
+  }
+  autoRefreshIntervalId = setInterval(() => {
+    runExtractionAndMonitoringCycle({ trigger: 'scheduled' }).catch(() => {});
+  }, AUTO_REFRESH_INTERVAL_MS);
+  renderFreshnessIndicator(nowMs);
+}
+
+async function runExtractionAndMonitoringCycle({ trigger = 'scheduled' } = {}) {
+  if (state.extractionStatus === 'RUNNING') {
+    return null;
+  }
+  state.extractionStatus = 'RUNNING';
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
+  const triggeredBy = trigger === 'manual-refresh' ? 'MANUAL' : 'SCHEDULER';
+  try {
+    // Step 1: Extract deterministic portfolio data via central data service
+    const payload = await api.fetchPortfolioData();
+    // Step 2: Update retrievedAt, lastSuccessfulAt, and shared store
+    applyPortfolioDataToStore(payload);
+    recordExtractionRun({
+      startedAt,
+      finishedAt: payload.retrievedAt,
+      durationMs: Date.now() - startMs,
+      sourceId: 'CAP-HANA-CDS',
+      sourceName: payload.source || 'CAP database (demo)',
+      status: 'COMPLETED',
+      recordCounts: { customers: payload.customers?.length ?? 0 },
+      triggeredBy
+    });
+    updateConnectorSyncTimestamp('ACTIVE', payload.retrievedAt);
+    errorHost.hidden = true;
+    // Step 3: Automatically run monitoring logic on the refreshed data
+    await loadMonitoring({ triggerRun: true });
+    // Refresh simulator panels if user is viewing SAP BTP & HANA CDS
+    if (state.currentTab === 'simulator') {
+      const connectorsHost = document.querySelector('#connectors-workspace');
+      if (connectorsHost && connectorsHost.hasChildNodes()) {
+        renderDataSourcesPanel(connectorsHost).catch(() => {});
+      }
+      if (state.mockSap) {
+        renderMockSap(state.mockSap, state.session?.permissions, state.extractionRuns, {
+          preserveMonitoringStatus: Boolean(state.mockSapMonitoring)
+        });
+      }
+    }
+    // Step 4: Update nextRunAt
+    resetAutoRefreshCountdown();
+    return payload;
+  } catch (error) {
+    // On failure: keep previous data intact, set FAILED, record error, and retry on next cycle
+    state.extractionStatus = 'FAILED';
+    state.lastError = error.message || 'Data extraction failed.';
+    recordExtractionRun({
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startMs,
+      sourceId: 'CAP-HANA-CDS',
+      sourceName: 'CAP database (demo)',
+      status: 'FAILED',
+      recordCounts: null,
+      error: state.lastError,
+      triggeredBy
+    });
+    resetAutoRefreshCountdown();
+    if (state.monitoringData) {
+      renderMonitoring({
+        ...state.monitoringData,
+        sharedState: buildSharedMonitoringState()
+      });
+    }
+    showError(`Data extraction failed (${state.lastError}). Retaining last known good portfolio data.`);
+    if (trigger === 'manual-refresh') {
+      throw error;
+    }
+    return null;
+  }
+}
+
+function startAppLevelScheduler() {
+  cleanupAppLevelScheduler();
+  resetAutoRefreshCountdown();
+
+  freshnessEvalIntervalId = setInterval(() => {
+    renderFreshnessIndicator();
+    if (state.monitoringData) {
+      renderMonitoring({
+        ...state.monitoringData,
+        sharedState: buildSharedMonitoringState()
+      });
+    }
+  }, FRESHNESS_EVAL_INTERVAL_MS);
+
+  countdownTickIntervalId = setInterval(() => {
+    renderFreshnessIndicator();
+  }, 1000);
+}
+
+function cleanupAppLevelScheduler() {
+  if (autoRefreshIntervalId !== null) {
+    clearInterval(autoRefreshIntervalId);
+    autoRefreshIntervalId = null;
+  }
+  if (freshnessEvalIntervalId !== null) {
+    clearInterval(freshnessEvalIntervalId);
+    freshnessEvalIntervalId = null;
+  }
+  if (countdownTickIntervalId !== null) {
+    clearInterval(countdownTickIntervalId);
+    countdownTickIntervalId = null;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const nextMs = state.nextRunAt ? Date.parse(state.nextRunAt) : 0;
+    if (!nextMs || Date.now() >= nextMs) {
+      runExtractionAndMonitoringCycle({ trigger: 'visibility-catchup' }).catch(() => {});
+    } else {
+      renderFreshnessIndicator();
+    }
+  }
+});
+
+window.addEventListener('beforeunload', cleanupAppLevelScheduler);
+window.creditGuardState = state;
+window.setSimulatedExtractionFailure = api.setSimulatedExtractionFailure;
+window.triggerPortfolioRefresh = () => runExtractionAndMonitoringCycle({ trigger: 'manual-refresh' });
+window.renderFreshnessIndicator = renderFreshnessIndicator;
 
 async function loadMockSap() {
   const connectorsHost = document.querySelector('#connectors-workspace');
@@ -287,16 +541,10 @@ async function loadMockSap() {
     renderSchedulerPanel(schedulerHost).catch(() => {});
   }
   state.mockSap = await api.getMockSap();
-  renderMockSap(state.mockSap, state.session?.permissions);
-  if (!state.mockSapMonitoring) {
-    document.querySelector('#mock-sap-monitoring-status').textContent =
-      state.mockSap.latestRun?.snapshotPromoted
-        ? 'Imported records are ready for an explicit monitoring run.'
-        : 'Extract source data before running monitoring.';
-  }
+  renderMockSap(state.mockSap, state.session?.permissions, state.extractionRuns, {
+    preserveMonitoringStatus: Boolean(state.mockSapMonitoring)
+  });
 }
-
-
 
 document.querySelector('#ai-welcome-board')?.addEventListener('click', event => {
   const promptCard = event.target.closest('[data-agent-prompt]');
@@ -310,29 +558,109 @@ document.querySelector('#ai-welcome-board')?.addEventListener('click', event => 
   }
 });
 
-document.querySelector('#refresh-mock-sap').addEventListener('click', () =>
-  loadMockSap().catch(error => {
-    document.querySelector('#mock-sap-error').textContent = error.message;
+document.querySelector('#refresh-mock-sap').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  const originalText = button.textContent || 'Reload simulator data';
+  const errorEl = document.querySelector('#mock-sap-error');
+  const msgEl = document.querySelector('#mock-sap-action-message');
+  button.disabled = true;
+  button.textContent = 'Reloading…';
+  if (errorEl) errorEl.textContent = '';
+  if (msgEl) {
+    msgEl.textContent = 'Reloading SAP S/4HANA simulator records…';
+    msgEl.className = 'form-message';
+  }
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
+  try {
+    await loadMockSap();
+    const connectorsHost = document.querySelector('#connectors-workspace');
+    if (connectorsHost) await renderDataSourcesPanel(connectorsHost).catch(() => {});
+    const finishedAt = new Date().toISOString();
+    const customerCount = state.mockSap?.entities?.CUSTOMER?.records?.length ?? 4;
+    recordExtractionRun({
+      startedAt,
+      finishedAt,
+      durationMs: Date.now() - startMs,
+      sourceId: 'MOCK-SAP-FIN-FSCM',
+      sourceName: state.mockSap?.source?.sourceName || 'SAP S/4HANA FIN-FSCM-CR Seed Simulator',
+      status: 'COMPLETED',
+      recordCounts: { customers: customerCount },
+      triggeredBy: 'MANUAL'
+    });
+    if (msgEl) {
+      msgEl.textContent = `Simulator data reloaded (${customerCount} staging customers refreshed at ${new Date(finishedAt).toLocaleTimeString()}).`;
+      msgEl.className = 'form-message success';
+    }
+  } catch (error) {
+    if (errorEl) errorEl.textContent = error.message;
+    if (msgEl) {
+      msgEl.textContent = '';
+      msgEl.className = 'form-message';
+    }
     showError(error.message);
-  }));
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+});
 document.querySelector('#extract-mock-sap').addEventListener('click', async event => {
   const button = event.currentTarget;
   const progress = document.querySelector('#mock-sap-progress');
   const progressLabel = document.querySelector('#mock-sap-progress-label');
-  const errorHost = document.querySelector('#mock-sap-error');
+  const errorEl = document.querySelector('#mock-sap-error');
+  const msgEl = document.querySelector('#mock-sap-action-message');
   button.disabled = true;
-  errorHost.textContent = '';
+  if (errorEl) errorEl.textContent = '';
+  if (msgEl) {
+    msgEl.textContent = '';
+    msgEl.className = 'form-message';
+  }
   progress.hidden = false;
   progress.removeAttribute('value');
   progressLabel.hidden = false;
   progressLabel.textContent = 'Extraction request is running on the backend; record counts will appear when it returns.';
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
   try {
-    await api.extractMockSap();
+    const extractResult = await api.extractMockSap();
+    const finishedAt = extractResult?.completedAt || new Date().toISOString();
+    const durationMs = Date.now() - startMs;
+    recordExtractionRun({
+      runId: extractResult?.id || `MOCK-SAP-EXTRACT:${finishedAt}`,
+      startedAt: extractResult?.startedAt || startedAt,
+      finishedAt,
+      durationMs,
+      sourceId: 'MOCK-SAP-FIN-FSCM',
+      sourceName: extractResult?.sourceName || 'SAP S/4HANA FIN-FSCM-CR Seed Simulator',
+      status: String(extractResult?.status || 'COMPLETED').toUpperCase(),
+      recordCounts: extractResult?.rowCounts || null,
+      triggeredBy: 'MANUAL'
+    });
+    updateConnectorSyncTimestamp(['MOCK-SAP-FIN-FSCM', 'HANA-CLOUD-SLT'], finishedAt);
     state.mockSapMonitoring = null;
     renderMockSapMonitoring(null);
     await Promise.all([loadMockSap(), loadPortfolio()]);
+    const connectorsHost = document.querySelector('#connectors-workspace');
+    if (connectorsHost) await renderDataSourcesPanel(connectorsHost).catch(() => {});
+    const schedulerHost = document.querySelector('#scheduler-workspace');
+    if (schedulerHost) await loadSchedulerStatus(schedulerHost).catch(() => {});
+    if (msgEl) {
+      msgEl.textContent = `Mock SAP staging extraction completed in ${durationMs} ms (active 13-customer portfolio totals preserved).`;
+      msgEl.className = 'form-message success';
+    }
   } catch (error) {
-    errorHost.textContent = error.message;
+    recordExtractionRun({
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startMs,
+      sourceId: 'MOCK-SAP-FIN-FSCM',
+      sourceName: 'SAP S/4HANA FIN-FSCM-CR Seed Simulator',
+      status: 'FAILED',
+      error: error.message,
+      triggeredBy: 'MANUAL'
+    });
+    if (errorEl) errorEl.textContent = error.message;
     showError(error.message);
     try { await loadMockSap(); }
     catch (refreshError) { showError(refreshError.message); }
@@ -347,7 +675,9 @@ document.querySelector('#run-mock-sap-monitoring').addEventListener('click', asy
   const status = document.querySelector('#mock-sap-monitoring-status');
   button.disabled = true;
   try {
-    let run = await api.runMockSapMonitoring();
+    let run = state.mockSap?.latestRun?.snapshotPromoted === true
+      ? await api.runMockSapMonitoring()
+      : await api.runMonitoring();
     if (run.status === 'QUEUED' || run.status === 'RUNNING') {
       run = await api.waitForMonitoringRun(run.id, {
         onStatus: current => {
@@ -368,14 +698,25 @@ document.querySelector('#run-mock-sap-monitoring').addEventListener('click', asy
   }
 });
 
-document.querySelector('#refresh-monitoring').addEventListener('click', () =>
-  loadMonitoring().catch(error => showError(error.message)));
+document.querySelector('#refresh-monitoring').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  document.querySelector('#monitoring-error').textContent = '';
+  try {
+    await runExtractionAndMonitoringCycle({ trigger: 'manual-refresh' });
+  } catch (error) {
+    document.querySelector('#monitoring-error').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 document.querySelector('#run-monitoring').addEventListener('click', async event => {
   const button = event.currentTarget;
   const error = document.querySelector('#monitoring-error');
   button.disabled = true;
   error.textContent = '';
   try {
+    resetAutoRefreshCountdown();
     const run = await api.runMonitoring();
     let completed = run;
     if (run.status === 'QUEUED' || run.status === 'RUNNING') {
@@ -386,9 +727,10 @@ document.querySelector('#run-monitoring').addEventListener('click', async event 
         }
       });
     }
-    await loadMonitoring();
+    await loadMonitoring({ triggerRun: false });
     if (completed.status === 'COMPLETED') await loadPortfolio();
     else error.textContent = `Monitoring ended with status ${completed.status}${completed.errorCategory ? ` (${completed.errorCategory})` : ''}.`;
+    resetAutoRefreshCountdown();
   } catch (error) {
     document.querySelector('#monitoring-error').textContent = error.message;
     showError(error.message);
@@ -786,6 +1128,10 @@ document.querySelector('#jump-connectors-btn')?.addEventListener('click', () => 
 updatePageHeading(state.currentTab);
 renderSectionShortcuts(state.currentTab);
 renderChat(state.chatMessages, null, state.session?.permissions);
+startAppLevelScheduler();
 loadSession()
-  .then(() => Promise.all([loadPortfolio(), loadMonitoring(), loadAgentHistory()]))
+  .then(() => Promise.all([
+    runExtractionAndMonitoringCycle({ trigger: 'initial-load' }),
+    loadAgentHistory()
+  ]))
   .catch(error => showError(error.message));

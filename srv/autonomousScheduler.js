@@ -7,7 +7,7 @@ const {
   listMonitoringFindings,
   listMonitoringRuns
 } = require('./monitoringStore');
-const { recalculateAllExposureSnapshots } = require('./canonicalRepository');
+const { recalculateAllExposureSnapshots, upsertDataSource } = require('./canonicalRepository');
 
 const DEFAULT_SCHEDULER_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_SCHEDULER_INTERVAL_MS = 20; // Allows sub-second intervals in automated unit tests
@@ -71,22 +71,35 @@ class AutonomousMonitoringScheduler {
   }
 
   getStatus() {
+    const normalizedState = this.lastRunStatus === 'FAILED'
+      ? 'ERROR'
+      : (this.status === 'RUNNING' ? 'RUNNING' : 'IDLE');
     return {
       status: this.status,
+      state: normalizedState,
       intervalMs: this.intervalMs,
       intervalMinutes: Math.round((this.intervalMs / 60000) * 100) / 100,
       initialDelayMs: this.initialDelayMs,
       autoRecalculate: this.autoRecalculate,
       lastRunAt: this.lastRunAt,
       lastCompletedAt: this.lastCompletedAt,
+      lastCycleTime: this.lastCompletedAt || this.lastRunAt || null,
       nextRunAt: this.nextRunAt,
+      nextCycleTime: this.nextRunAt || null,
       totalRuns: this.totalRuns,
       successfulRuns: this.successfulRuns,
       failedRuns: this.failedRuns,
       skippedRuns: this.skippedRuns,
       lastRunDurationMs: this.lastRunDurationMs,
       lastRunStatus: this.lastRunStatus,
+      lastResult: this.lastRunStatus === 'NONE'
+        ? null
+        : {
+            status: this.lastRunStatus,
+            ...(this.lastRunDetails ? { ...this.lastRunDetails } : {})
+          },
       lastRunError: this.lastRunError,
+      lastError: this.lastRunError,
       lastRunDetails: this.lastRunDetails ? { ...this.lastRunDetails } : null
     };
   }
@@ -203,6 +216,23 @@ class AutonomousMonitoringScheduler {
           runStatus: currentRun?.status || 'QUEUED',
           executedAt: this.lastCompletedAt
         };
+
+        if (this.db?.model?.definitions?.['credit.CG_DATA_SOURCE']) {
+          try {
+            const { ensureDefaultEnterpriseSources } = require('./connectors/connectorRegistry');
+            const allSources = await ensureDefaultEnterpriseSources(this.db);
+            for (const src of allSources || []) {
+              if (String(src.status || '').toUpperCase() === 'ACTIVE') {
+                await upsertDataSource(this.db, {
+                  ...src,
+                  last_sync_at: this.lastCompletedAt
+                });
+              }
+            }
+          } catch {
+            // Non-blocking telemetry sync
+          }
+        }
 
         this.logger.info({
           event: 'autonomous_cycle_finished',

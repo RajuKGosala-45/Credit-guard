@@ -121,7 +121,7 @@ test('KPI cards preserve all four metrics and apply refined enterprise typograph
   assert.match(componentsCss, /\.kpi-value\s*\{[\s\S]*?font-family:\s*var\(--font-body\);[\s\S]*?font-variant-numeric:\s*tabular-nums;/, '.kpi-value must use consistent body font family with tabular numerals');
 });
 
-test('Workspace navigation separates AI Credit Assistance (#chat-panel) and Credit Overview (#overview-panel) in exact 6-tab order', async () => {
+test('Workspace navigation separates AI Credit Assistance (#chat-panel), Credit Overview (#overview-panel), and AI Audit History (#audit-panel) in exact 7-tab order', async () => {
   const [html, js] = await Promise.all([
     fs.readFile(path.join(projectRoot, 'app', 'credit', 'index.html'), 'utf8'),
     fs.readFile(path.join(projectRoot, 'app', 'credit', 'js', 'main.js'), 'utf8')
@@ -130,27 +130,36 @@ test('Workspace navigation separates AI Credit Assistance (#chat-panel) and Cred
   const tabMatches = [...html.matchAll(/<button[^>]*class="tab[^"]*"[^>]*data-tab="([^"]+)"/g)].map(m => m[1]);
   assert.deepEqual(
     tabMatches,
-    ['chat', 'overview', 'dashboard', 'analysis', 'approvals', 'simulator'],
-    'Sidebar navigation must follow the exact 6-tab order: chat, overview, dashboard, analysis, approvals, simulator'
+    ['chat', 'overview', 'dashboard', 'analysis', 'approvals', 'simulator', 'audit'],
+    'Sidebar navigation must follow the exact 7-tab order: chat, overview, dashboard, analysis, approvals, simulator, audit'
   );
 
   const chatStart = html.indexOf('<section id="chat-panel"');
   const overviewStart = html.indexOf('<section id="overview-panel"');
   const dashboardStart = html.indexOf('<section id="dashboard-panel"');
-  assert.ok(chatStart !== -1 && overviewStart > chatStart && dashboardStart > overviewStart, '#overview-panel must follow #chat-panel before #dashboard-panel');
+  const auditStart = html.indexOf('<section id="audit-panel"');
+  assert.ok(chatStart !== -1 && overviewStart > chatStart && dashboardStart > overviewStart && auditStart > dashboardStart, '#audit-panel must follow after other panels');
 
   const chatContent = html.slice(chatStart, overviewStart);
   const overviewContent = html.slice(overviewStart, dashboardStart);
+  const auditContent = html.slice(auditStart);
 
   assert.doesNotMatch(chatContent, /id="kpis"/, '#chat-panel must be a dedicated AI workspace without #kpis');
   assert.match(chatContent, /id="sec-chat-control"/, '#chat-panel must retain AI Credit Control');
-  assert.match(chatContent, /id="sec-audit-memory"/, '#chat-panel must retain Audit & Memory');
-  assert.match(chatContent, /id="sec-enterprise-integration"/, '#chat-panel must retain Enterprise Integration');
+  assert.doesNotMatch(chatContent, /id="sec-audit-memory"/, '#chat-panel must not retain Audit & Memory');
+  assert.doesNotMatch(chatContent, /id="sec-enterprise-integration"/, '#chat-panel must not retain Enterprise Integration');
+  assert.doesNotMatch(chatContent, /id="sec-execution-status"/, '#chat-panel must not retain Execution Status');
+
+  assert.match(auditContent, /id="sec-audit-memory"/, '#audit-panel must contain Audit & Memory');
+  assert.match(auditContent, /id="sec-enterprise-integration"/, '#audit-panel must contain Enterprise Integration');
+  assert.match(auditContent, /id="sec-execution-status"/, '#audit-panel must contain Execution Status');
 
   assert.match(overviewContent, /id="kpis"/, '#overview-panel must contain #kpis');
-  assert.match(overviewContent, /id="overview-country-exposure"/, '#overview-panel must contain country-wise portfolio exposure summary');
-  assert.match(overviewContent, /id="overview-company-exposure"/, '#overview-panel must contain company-code portfolio exposure summary');
-  assert.match(overviewContent, /id="sec-overview-risk"/, '#overview-panel must contain credit risk & monitoring overview section');
+  assert.match(overviewContent, /id="overview-health-verdict"/, '#overview-panel must contain portfolio health verdict banner');
+  assert.match(overviewContent, /id="overview-attention-list"/, '#overview-panel must contain attention needed section');
+  assert.match(overviewContent, /id="overview-shortcuts"/, '#overview-panel must contain navigation shortcuts section');
+  assert.doesNotMatch(overviewContent, /id="overview-country-exposure"/, '#overview-panel must not duplicate country exposure bar chart');
+  assert.doesNotMatch(overviewContent, /id="overview-company-exposure"/, '#overview-panel must not duplicate company-code exposure bar chart');
 
   assert.match(js, /function openAiCreditAssistanceWorkspace[\s\S]*?switchTab\('chat'\)/, 'Quick AI Ask helper must navigate directly to AI Credit Assistance (chat)');
 });

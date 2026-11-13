@@ -106,6 +106,9 @@
         <button class="tab" type="button" data-tab="simulator" style="display: flex; align-items: center; width: 100%; padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid #1a365d; background: #ffffff; font-weight: 600; text-align: left; cursor: pointer; color: #1a365d;">
           <span class="nav-label">SAP BTP &amp; HANA CDS</span>
         </button>
+        <button class="tab" type="button" data-tab="audit" style="display: flex; align-items: center; width: 100%; padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid #1a365d; background: #ffffff; font-weight: 600; text-align: left; cursor: pointer; color: #1a365d;">
+          <span class="nav-label">AI Audit History</span>
+        </button>
       </nav>
     </aside>
 
@@ -117,8 +120,18 @@
             <h1 id="page-title">AI Credit Assistance</h1>
             <p id="page-subtitle" class="muted">Ask policy-grounded credit questions, evaluate customer risk, draft limit change proposals, and inspect agent execution history.</p>
           </div>
-          <div class="freshness-meta">
-            <span>Data freshness <strong id="last-updated">UNKNOWN</strong></span>
+          <div id="freshness-indicator" class="freshness-meta" tabindex="0" aria-describedby="freshness-tooltip">
+            <span class="freshness-label">Data freshness</span>
+            <span id="freshness-badge" class="freshness-badge freshness-badge--unknown">
+              <span id="freshness-icon" aria-hidden="true">○</span>
+              <strong id="last-updated">UNKNOWN</strong>
+            </span>
+            <span id="freshness-relative" class="freshness-relative">Waiting for initial extraction…</span>
+            <span class="freshness-sep" aria-hidden="true">·</span>
+            <span id="freshness-countdown" class="freshness-countdown">Next refresh in 5:00</span>
+            <div id="freshness-tooltip" class="freshness-popover" role="tooltip">
+              Source: CAP database (demo). Last retrieved: —. Auto-refresh every 5 minutes. Status rules: Fresh &lt;= 6 min, Delayed 6-15 min, Stale &gt; 15 min.
+            </div>
           </div>
         </section>
 
@@ -158,7 +171,6 @@
 
               <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
               <p id="chat-status" class="muted" role="status"></p>
-              <section id="agent-activity" class="agent-activity" aria-live="polite" hidden></section>
               <form id="chat-form" class="chat-form">
                 <label class="sr-only" for="chat-input">Ask with AI Credit Assistance</label>
                 <input id="chat-input" required maxlength="1000" placeholder="Ask about credit exposure, utilisation, overdue invoices, customer C001–C013, or limit change requests…">
@@ -166,99 +178,40 @@
               </form>
               <p id="chat-error" class="form-message error" role="alert"></p>
             </section>
-
-            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; align-items: start;">
-              <section id="sec-audit-memory" class="card agent-history">
-                <div class="card-heading">
-                  <div>
-                    <p class="eyebrow">AUDIT &amp; MEMORY</p>
-                    <h3>Agent execution history</h3>
-                  </div>
-                  <div class="document-actions">
-                    <button id="refresh-agent-history" class="button secondary" type="button">Refresh</button>
-                    <button id="clear-agent-history" class="button secondary" type="button">Clear history</button>
-                  </div>
-                </div>
-                <p id="agent-memory-status" class="muted" role="status"></p>
-                <ul id="agent-conversations-list" aria-label="My conversations"></ul>
-                <ul id="agent-history-list"></ul>
-              </section>
-
-              <section id="sec-enterprise-integration" class="card" aria-labelledby="connectors-quick-heading">
-                <div class="card-heading">
-                  <div>
-                    <p class="eyebrow">ENTERPRISE INTEGRATION</p>
-                    <h3 id="connectors-quick-heading">SAP &amp; ERP Connectors</h3>
-                  </div>
-                </div>
-                <p class="muted">Simulated FIN-FSCM-CR canonical pipeline connected to local CAP SQLite database and structured file connectors (Demo Mode · No Live SAP Connection).</p>
-                <div class="kpi-card" style="margin: 0.75rem 0; padding: 0.75rem;">
-                  <span class="kpi-label">Pipeline Architecture</span>
-                  <span class="kpi-value" style="font-size: 1.05rem; color: #1a73e8;">RAW → CANONICAL → CALCULATION</span>
-                  <span class="kpi-subtext">Deterministic FIN-FSCM-CR Exposure Engine</span>
-                </div>
-                <div class="document-actions">
-                  <button id="jump-connectors-btn" type="button" class="button secondary">Manage Connectors &amp; Schema</button>
-                </div>
-              </section>
-            </div>
           </div>
         </section>
 
-        <section id="overview-panel" class="tab-panel">
-          <div id="sec-overview-kpis">
+        <section id="overview-panel" class="tab-panel" aria-label="Credit overview">
+          <div class="overview-stack">
+            <!-- 1. KPI cards -->
             <section id="kpis" class="kpi-grid" aria-label="Credit portfolio KPIs"></section>
-          </div>
 
-          <div id="sec-overview-exposure" class="analysis-grid">
-            <section class="card exposure-card">
-              <div class="card-heading">
+            <!-- 2. Portfolio health verdict -->
+            <section id="overview-health-verdict" class="overview-verdict-banner" role="status" aria-live="polite"></section>
+
+            <!-- 3. Attention needed (top 3-5 items) -->
+            <section class="overview-section" aria-labelledby="overview-attention-heading">
+              <div class="overview-section-header">
                 <div>
-                  <p class="eyebrow">PORTFOLIO SUMMARY · GEOGRAPHY</p>
-                  <h2>Country-Wise Portfolio Exposure</h2>
+                  <p class="eyebrow">PRIORITY TRIAGE</p>
+                  <h2 id="overview-attention-heading">Attention needed</h2>
+                </div>
+                <span id="overview-attention-count" class="muted overview-section-meta"></span>
+              </div>
+              <div id="overview-attention-list" class="overview-attention-list"></div>
+            </section>
+
+            <!-- 4. Navigation shortcuts -->
+            <section class="overview-section" aria-labelledby="overview-shortcuts-heading">
+              <div class="overview-section-header">
+                <div>
+                  <p class="eyebrow">WORKSPACE SHORTCUTS</p>
+                  <h2 id="overview-shortcuts-heading">Explore detailed views</h2>
                 </div>
               </div>
-              <div id="overview-country-exposure" class="exposure-list"></div>
-            </section>
-            <section class="card exposure-card">
-              <div class="card-heading">
-                <div>
-                  <p class="eyebrow">PORTFOLIO SUMMARY · LEGAL ENTITIES</p>
-                  <h2>Company-Code Exposure &amp; Utilisation</h2>
-                </div>
-              </div>
-              <div id="overview-company-exposure" class="exposure-list"></div>
+              <div id="overview-shortcuts" class="overview-shortcuts-grid"></div>
             </section>
           </div>
-
-          <section id="sec-overview-risk" class="card monitoring-card" aria-labelledby="overview-risk-heading">
-            <div class="card-heading">
-              <div>
-                <p class="eyebrow">CREDIT RISK &amp; MONITORING OVERVIEW</p>
-                <h2 id="overview-risk-heading">Risk Summary, Active Alerts &amp; Customer Findings</h2>
-              </div>
-              <div class="document-actions">
-                <button class="button secondary" type="button" data-tab="dashboard">Open Portfolio &amp; Monitoring</button>
-                <button class="button secondary" type="button" data-tab="analysis">Open Exposure Analysis</button>
-              </div>
-            </div>
-            <p id="overview-monitoring-status" class="muted" role="status">No monitoring run is available yet.</p>
-            <section class="monitoring-advisory">
-              <h3>Credit risk summary</h3>
-              <p id="overview-risk-summary" class="muted">Run monitoring to see a deterministic portfolio summary.</p>
-              <small id="overview-risk-source" class="muted"></small>
-            </section>
-            <div class="analysis-grid" style="margin-top: 1.25rem; margin-bottom: 0;">
-              <section class="monitoring-section" style="margin-top: 0;">
-                <h3>Active alerts</h3>
-                <div id="overview-active-alerts" class="monitoring-list"></div>
-              </section>
-              <section class="monitoring-section" style="margin-top: 0;">
-                <h3>Latest customer findings</h3>
-                <div id="overview-findings" class="table-wrap"></div>
-              </section>
-            </div>
-          </section>
         </section>
 
         <section id="dashboard-panel" class="tab-panel">
@@ -274,7 +227,8 @@
                   <button id="run-monitoring" class="button primary" type="button" hidden>Run monitoring</button>
                 </div>
               </div>
-              <p class="muted">Deterministic demo rules: warning at 80%, breached at 100%, critical at 120%. Overdue status is based on invoice due dates. Monitoring runs only when an authorized operator starts it.</p>
+              <p class="muted">Deterministic demo rules: warning at 80%, breached at 100%, critical at 120%. Overdue status is based on invoice due dates. Monitoring runs automatically every 5 minutes and can also be started manually by an authorized operator.</p>
+              <p id="monitoring-autorun" class="monitoring-autorun-badge" role="status">Auto-run: ON · next run in 05:00</p>
               <p id="monitoring-status" class="muted" role="status">No monitoring run is available yet.</p>
               <p id="monitoring-error" class="form-message error" role="alert"></p>
               <div id="monitoring-kpis" class="kpi-grid monitoring-kpis"></div>
@@ -421,6 +375,7 @@
             </div>
             <p class="muted">Inspect synthetic SAP S/4HANA FSCM source entities, extract canonical snapshots into the CAP / HANA database, and run deterministic credit monitoring.</p>
             <p id="mock-sap-portfolio-source" class="muted"></p>
+            <p id="mock-sap-action-message" class="form-message" role="status"></p>
             <p id="mock-sap-error" class="form-message error" role="alert"></p>
             <dl class="mock-sap-source-meta">
               <div><dt>Source</dt><dd id="mock-sap-source-name">Loading…</dd></div>
@@ -452,6 +407,58 @@
             <p id="mock-sap-monitoring-status" class="muted" role="status">Extract source data before running monitoring.</p>
             <div id="mock-sap-monitoring-results"></div>
           </section>
+        </section>
+
+        <section id="audit-panel" class="tab-panel">
+          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <section id="sec-audit-memory" class="card agent-history" style="width: 100%;">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">AUDIT &amp; MEMORY</p>
+                  <h3>Agent execution history</h3>
+                </div>
+                <div class="document-actions">
+                  <button id="refresh-agent-history" class="button secondary" type="button">Refresh</button>
+                  <button id="clear-agent-history" class="button secondary" type="button">Clear history</button>
+                </div>
+              </div>
+              <p id="agent-memory-status" class="muted" role="status"></p>
+              <ul id="agent-conversations-list" aria-label="My conversations"></ul>
+              <ul id="agent-history-list"></ul>
+            </section>
+
+            <section id="sec-enterprise-integration" class="card" aria-labelledby="connectors-quick-heading" style="width: 100%; display: none;">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">ENTERPRISE INTEGRATION</p>
+                  <h3 id="connectors-quick-heading">SAP &amp; ERP Connectors</h3>
+                </div>
+              </div>
+              <p class="muted">Simulated FIN-FSCM-CR canonical pipeline connected to local CAP SQLite database and structured file connectors (Demo Mode · No Live SAP Connection).</p>
+              <div class="kpi-card" style="margin: 0.75rem 0; padding: 0.75rem;">
+                <span class="kpi-label">Pipeline Architecture</span>
+                <span class="kpi-value" style="font-size: 1.05rem; color: #1a73e8;">RAW → CANONICAL → CALCULATION</span>
+                <span class="kpi-subtext">Deterministic FIN-FSCM-CR Exposure Engine</span>
+              </div>
+              <div class="document-actions">
+                <button id="jump-connectors-btn" type="button" class="button secondary">Manage Connectors &amp; Schema</button>
+              </div>
+            </section>
+
+            <section id="sec-execution-status" class="card" aria-labelledby="execution-status-heading" style="width: 100%; display: none;">
+              <div class="card-heading" style="margin-bottom: 1rem;">
+                <div>
+                  <p class="eyebrow">AGENT EXECUTION TRACE</p>
+                  <h3 id="execution-status-heading">Execution Status</h3>
+                </div>
+              </div>
+              <section id="agent-activity" class="agent-activity" aria-live="polite">
+                <div style="background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1.5rem; box-shadow: var(--shadow-card);">
+                  <p class="muted" style="margin: 0; font-size: 0.95rem;">No AI execution yet. Ask a question in AI Credit Assistance to see the tool activity trace here.</p>
+                </div>
+              </section>
+            </section>
+          </div>
         </section>
 
         <div id="global-error" class="notice error" role="alert" hidden></div>

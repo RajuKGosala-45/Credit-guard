@@ -25,6 +25,7 @@ const {
   validatePlan,
   validateTaskResult
 } = require('./agentPlan');
+const { generateStructuredCreditResponse } = require('./responseEngine');
 
 const MAX_STEPS = 6;
 const MAX_TOOL_CALLS = 24;
@@ -1504,7 +1505,7 @@ async function offlineReply(message, tools, documentContext) {
       : 'No fixture records matched.';
     return `${result.source} ${details} (Offline demo mode)`;
   }
-  if (/\b(?:extraction|ingestion|mock\s*sap|source status|data source)\b/i.test(message)) {
+  if (/\b(?:extraction|ingestion|mock\s*sap|source\s*status|data\s*sources?|connectors?|connectivity|connection\s*status)\b/i.test(message)) {
     const result = await tools.get_data_ingestion_status({});
     const summaries = result.sources.length
       ? result.sources.map(source => source.latestRun
@@ -1665,6 +1666,9 @@ class AgentController {
         resumePlan
       });
       const result = await Promise.race([run, timedOut]);
+      const rawExecutionOutputs = result._executionOutputs || [];
+      delete result._executionOutputs;
+      delete result.structuredContent;
       const provenance = executionProvenance(execution);
       result.provider = result.offline ? 'offline' : this.providerName;
       result.providerFallback = execution.providerFallback === true;
@@ -1683,14 +1687,47 @@ class AgentController {
       result.reply += `\n\nResponse provider: ${providerLabel}${result.providerFallbackReason
         ? ` (fallback reason: ${result.providerFallbackReason.replaceAll('_', ' ')})`
         : ''}.`;
+
+      let structuredResponse = null;
+      try {
+        const engineOut = await generateStructuredCreditResponse(message, {
+          db: this.db,
+          user: this.user,
+          sessionId: conversationId || this.user?.id || 'default-session',
+          history,
+          executionOutputs: rawExecutionOutputs,
+          customerDataSource: this.customerDataSource
+        });
+        structuredResponse = engineOut.structuredResponse;
+      } catch {
+        structuredResponse = null;
+      }
+
       execution.status = 'completed';
       execution.completedAt = new Date().toISOString();
       execution.preparedActions = result.preparedActions || [];
+      if (structuredResponse) {
+        Object.defineProperty(execution, 'structuredResponse', {
+          value: structuredResponse,
+          enumerable: false,
+          configurable: true,
+          writable: true
+        });
+      }
       await this.persistExecution(execution);
       result.executionSummary = executionSummary(execution, result.plan, result.taskResults);
       delete execution.recoveryPlan;
       delete execution.recoveryData;
-      return { ...result, preparedActions: execution.preparedActions, execution };
+      const finalPayload = { ...result, preparedActions: execution.preparedActions, execution };
+      if (structuredResponse) {
+        Object.defineProperty(finalPayload, 'structuredResponse', {
+          value: structuredResponse,
+          enumerable: false,
+          configurable: true,
+          writable: true
+        });
+      }
+      return finalPayload;
     } catch (error) {
       execution.status = 'failed';
       execution.errorCategory = error.category || (error.statusCode === 403 ? 'permission_denied' : 'agent_error');
@@ -2118,7 +2155,7 @@ class AgentController {
           ],
           tools: [],
           signal,
-          system: 'You are the Credit Guard business assistant. Answer the user naturally and directly using only the supplied validated Credit Guard tool results and conversation context. Include relevant customer identity, credit limit, backend-calculated exposure and utilization, overdue invoices, payments, monitoring findings, alert events, extraction status, and approval status when available. Clearly identify facts that were not retrieved. Do not invent or recalculate financial values, thresholds, or risk rankings; deterministic backend values are authoritative. Recommendations are advisory only. Never submit or approve credit-limit changes or imply that a human approval has occurred unless the supplied data says so. A workflow tool result is a preview only: explain its steps, dependencies, expected results, role requirements, and limitations; never imply it was scheduled or executed.'
+          system: 'You are the Credit Guard business assistant. Answer the user naturally and directly using only the supplied validated Credit Guard tool results and conversation context. Always answer in clean GitHub-flavored markdown. Start with a one-line summary sentence. Use a markdown table with columns: Customer (name and ID), Limit, Exposure, Utilisation %, Status, Risk Flags (comma separated). Use short bullet points for analysis. Do not repeat the raw execution status lines; keep the answer concise. Include relevant customer identity, credit limit, backend-calculated exposure and utilization, overdue invoices, payments, monitoring findings, alert events, extraction status, and approval status when available. Clearly identify facts that were not retrieved. Do not invent or recalculate financial values, thresholds, or risk rankings; deterministic backend values are authoritative. Recommendations are advisory only. Never submit or approve credit-limit changes or imply that a human approval has occurred unless the supplied data says so. A workflow tool result is a preview only: explain its steps, dependencies, expected results, role requirements, and limitations; never imply it was scheduled or executed.'
         });
         reply = finalResponse?.toolCalls?.length
           ? `Plan status: ${plan.status}. ${completedCount} of ${plan.tasks.length} tasks completed.${clarification}`
@@ -2141,7 +2178,7 @@ class AgentController {
       preparedActions,
       plan: publicPlan(plan),
       taskResults,
-      structuredContent: buildStructuredContent(executionOutputs),
+      _executionOutputs: executionOutputs,
       ...(executionOutputs.find(output => output.tool === 'preview_credit_workflow')
         ? { workflowPreview: executionOutputs.find(output => output.tool === 'preview_credit_workflow').result }
         : {})
