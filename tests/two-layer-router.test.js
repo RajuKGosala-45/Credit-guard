@@ -470,7 +470,7 @@ test('handleChatSubmit escalates low-confidence query to Layer A Gemini router a
 
   const resA = await handleChatSubmit({ preventDefault() {} }, null, messages, null, state);
   assert.equal(resA.structuredResponse.intent.primary, 'HIGH_RISK_CUSTOMERS');
-  assert.match(chatHost.toHTML(), /Calculated from portfolio data/);
+  assert.match(chatHost.toHTML(), /Calculated from Portfolio & Monitoring data/);
 
   // 3b. When both local classifier and Gemini are uncertain -> CLARIFY with ZERO data badges & 3 suggestions
   resetChatRouterState();

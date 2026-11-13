@@ -28,6 +28,9 @@ jobs:
       - name: Run Test Suite
         run: npm test
 
+      - name: Install Make (build-essential)
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
       - name: Install Cloud MTA Build Tool (mbt)
         run: npm install -g mbt
 

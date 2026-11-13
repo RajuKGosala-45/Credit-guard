@@ -2166,8 +2166,12 @@ function buildLocalStructuredResponseInner(question, state = {}, intentInfo, ret
     );
     const activeLimit = !display.showAll && Number.isInteger(display.limit) && display.limit > 0 ? display.limit : null;
     const overdueCustomers = activeLimit ? sortedOverdue.slice(0, activeLimit) : sortedOverdue;
-    const totalOverdue = overdueCustomers.reduce((s, c) => s + c.overdueAmount, 0);
-    const totalOverdueInvoices = overdueCustomers.reduce((s, c) => s + c.overdueInvoiceCount, 0);
+    const kpis = state?.dashboard?.kpis;
+    const hasFilters = entities && (entities.country || entities.companyCode || (entities.customerIds && entities.customerIds.length > 0) || activeLimit);
+    const totalOverdue = !hasFilters && kpis?.overdueAmount != null ? Number(kpis.overdueAmount) : overdueCustomers.reduce((s, c) => s + c.overdueAmount, 0);
+    const totalOverdueInvoices = !hasFilters && kpis?.overdueInvoiceCount != null ? Number(kpis.overdueInvoiceCount) : overdueCustomers.reduce((s, c) => s + c.overdueInvoiceCount, 0);
+    const overdueCountVal = !hasFilters && kpis?.overdueRiskCustomers != null ? Number(kpis.overdueRiskCustomers) : overdueCustomers.length;
+    const scopedLength = !hasFilters && kpis?.customerCount != null ? Number(kpis.customerCount) : scoped.length;
     const rows = overdueCustomers.map(toCustomerTableRow);
     const columns = resolveColumnsForIntent('OVERDUE_COLLECTIONS', display);
 
@@ -2181,7 +2185,7 @@ function buildLocalStructuredResponseInner(question, state = {}, intentInfo, ret
       },
       showTableAboveFold: true,
       title: 'Overdue Receivables & Collections Priority',
-      summary: `${overdueCustomers.length} of ${scoped.length} customers hold ${formatIndianCurrency(totalOverdue)} in overdue receivables across ${totalOverdueInvoices} past-due invoices.`,
+      summary: `${overdueCountVal} of ${scopedLength} customers hold ${formatIndianCurrency(totalOverdue)} in overdue receivables across ${totalOverdueInvoices} past-due invoices.`,
       planNote: display.countryCodeAliasUsed ? 'Country code = company code (BSxx) in this dataset.' : null,
       headlineBullets: [],
       blocks: [

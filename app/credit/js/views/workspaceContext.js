@@ -528,7 +528,7 @@ function buildOverviewSnapshot(state = {}) {
     customersBreached,
     criticalCustomers,
     pendingApprovalCount: pendingRequests.length,
-    verdict: { tone: verdictTone, label: verdictLabel, text: `${verdictLine1} ${verdictLine2}` },
+    verdict: { tone: verdictTone, label: verdictLabel, text: verdictText },
     attentionItems,
     kpiRows: [
       { metric: 'Total Exposure', value: formatMoney(totalExposure, kpis?.currency || 'INR'), status: overallUtilisation > 0.8 ? 'Action needed' : overallUtilisation >= 0.6 ? 'Watch' : 'Healthy', note: `${customerCount} customers` },

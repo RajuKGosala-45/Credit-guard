@@ -664,7 +664,7 @@ test('chat API returns an offline assistant contract and validates empty message
   assert.deepEqual(Object.keys(chat.body).sort(), [
     'conversationId', 'dataSourcesUsed', 'execution', 'executionSummary', 'memoryEnabled',
     'modulesUsed', 'offline', 'preparedActions', 'provider', 'providerFallback',
-    'providerFallbackReason', 'reply'
+    'providerFallbackReason', 'reply', 'structuredResponse'
   ]);
   assert.equal(chat.body.offline, true);
   assert.equal(chat.body.provider, 'offline');
